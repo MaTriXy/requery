@@ -3,13 +3,19 @@ apply plugin: 'idea'
 apply plugin: 'maven-publish'
 
 buildscript {
+    ext.android_buildtools_version = '24.0.2'
+    ext.jpa_version = '2.1.1'
+    ext.kotlin_version = '1.0.4'
+    ext.rxjava_version = '1.2.0'
+    ext.rxjava2_version = '2.0.0'
     repositories {
         jcenter()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:1.5.0'
-        classpath "com.android.databinding:dataBinder:1.0-rc4"
+        classpath 'com.android.tools.build:gradle:2.2.0'
         classpath 'com.jfrog.bintray.gradle:gradle-bintray-plugin:1.4'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        classpath "org.jetbrains.dokka:dokka-gradle-plugin:0.9.8"
     }
 }
 
@@ -26,7 +32,9 @@ idea {
     }
 }
 
-version = '1.0.0-beta1'
+group = 'io.requery'
+version = '1.0.1'
+description = 'A light but powerful object mapper and SQL generator for Java/Android'
 
 Properties properties = new Properties()
 File localProperties = project.rootProject.file('local.properties')
@@ -34,7 +42,7 @@ if (localProperties.exists()) {
     properties.load(localProperties.newDataInputStream())
 }
 
-configure([project(':requery'), project(':requery-processor')]) {
+configure([project(':requery'), project(':requery-processor'), project(':requery-kotlin')]) {
     apply plugin: 'java'
     apply plugin: 'maven-publish'
 
@@ -54,20 +62,24 @@ configure([project(':requery'), project(':requery-processor')]) {
         publications {
             maven(MavenPublication) {
                 from components.java
-                groupId 'io.requery'
+                groupId rootProject.group
                 artifactId project.name
                 version rootProject.version
 
                 artifact sourcesJar
                 artifact javadocJar
+
+                pom.withXml {
+                    asNode().children().last() + project.pomXml
+                }
             }
         }
 
         repositories {
             maven {
                 credentials {
-                    username = properties.getProperty('bintray.user')
-                    password = properties.getProperty('bintray.apikey')
+                    username = bintray.user
+                    password = bintray.key
                 }
                 url 'http://oss.jfrog.org/artifactory/oss-snapshot-local'
             }
@@ -75,7 +87,7 @@ configure([project(':requery'), project(':requery-processor')]) {
     }
 }
 
-configure([project(':requery'), project(':requery-processor'), project(':requery-android')]) {
+configure([project(':requery'), project(':requery-processor'), project(':requery-android'), project(':requery-kotlin')]) {
     apply plugin: 'com.jfrog.bintray'
 
     bintray {
@@ -90,13 +102,36 @@ configure([project(':requery'), project(':requery-processor'), project(':requery
             vcsUrl = 'https://github.com/requery/requery.git'
             version {
                 name = rootProject.version
-                desc = 'requery ORM'
+                desc = rootProject.description
                 released  = new Date()
             }
         }
     }
+
+    ext {
+        pomXml = {
+            resolveStrategy = Closure.DELEGATE_FIRST
+            name project.name
+            description project.description ?: rootProject.description
+            url 'https://github.com/requery/requery'
+            scm {
+                url 'https://github.com/requery/requery.git'
+                connection 'scm:git:git://github.com/requery/requery.git'
+                developerConnection 'scm:git:git@github.com/requery/requery.git'
+            }
+            licenses {
+                license {
+                    name 'The Apache Software License, Version 2.0'
+                    url 'http://www.apache.org/license/LICENSE-2.0.txt'
+                    distribution 'repo'
+                }
+            }
+            developers {
+                developer {
+                    id 'npurushe'
+                    name 'Nikhil Purushe'
+                }
+            }
+        }
+    }
 }
-
-
-
-

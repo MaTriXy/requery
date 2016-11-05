@@ -22,11 +22,14 @@ import io.requery.ReferentialAction;
 import io.requery.proxy.Initializer;
 import io.requery.proxy.Property;
 import io.requery.proxy.PropertyState;
+import io.requery.query.Order;
 import io.requery.util.Objects;
 import io.requery.util.function.Supplier;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.EnumSet;
+import java.util.LinkedHashSet;
 
 /**
  * Builds information about an attribute on a specific {@link Type}.
@@ -46,6 +49,11 @@ public class AttributeBuilder<T, V> extends BaseAttribute<T, V> {
 
     public AttributeBuilder<T, V> setProperty(Property<T, V> property) {
         this.property = property;
+        return this;
+    }
+
+    public AttributeBuilder<T, V> setPropertyName(String name) {
+        this.propertyName = name;
         return this;
     }
 
@@ -119,8 +127,9 @@ public class AttributeBuilder<T, V> extends BaseAttribute<T, V> {
         return this;
     }
 
-    public AttributeBuilder<T, V> setIndexName(String name) {
-        this.indexName = name;
+    public AttributeBuilder<T, V> setIndexNames(String... names) {
+        this.indexNames = new LinkedHashSet<>();
+        Collections.addAll(indexNames, names);
         return this;
     }
 
@@ -129,14 +138,18 @@ public class AttributeBuilder<T, V> extends BaseAttribute<T, V> {
         return this;
     }
 
-    public AttributeBuilder<T, V> setReferentialAction(ReferentialAction action) {
-        this.referentialAction = action;
+    public AttributeBuilder<T, V> setDeleteAction(ReferentialAction action) {
+        this.deleteAction = action;
+        return this;
+    }
+
+    public AttributeBuilder<T, V> setUpdateAction(ReferentialAction action) {
+        this.updateAction = action;
         return this;
     }
 
     public AttributeBuilder<T, V> setCascadeAction(CascadeAction ...actions) {
-        this.cascadeActions = EnumSet.noneOf(CascadeAction.class);
-        cascadeActions.addAll(Arrays.asList(actions));
+        this.cascadeActions = EnumSet.copyOf(Arrays.asList(actions));
         return this;
     }
 
@@ -157,6 +170,16 @@ public class AttributeBuilder<T, V> extends BaseAttribute<T, V> {
 
     public AttributeBuilder<T, V> setReferencedAttribute(Supplier<Attribute> attribute) {
         this.referencedAttribute = attribute;
+        return this;
+    }
+
+    public AttributeBuilder<T, V> setOrderByAttribute(Supplier<Attribute> attribute) {
+        this.orderByAttribute = attribute;
+        return this;
+    }
+
+    public AttributeBuilder<T, V> setOrderByDirection(Order order) {
+        this.orderByDirection = order;
         return this;
     }
 

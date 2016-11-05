@@ -16,7 +16,6 @@
 
 package io.requery.android.example.app.model;
 
-
 import android.databinding.Bindable;
 import android.databinding.Observable;
 import android.os.Parcelable;
@@ -27,6 +26,7 @@ import io.requery.ForeignKey;
 import io.requery.Generated;
 import io.requery.Index;
 import io.requery.Key;
+import io.requery.ManyToMany;
 import io.requery.OneToMany;
 import io.requery.OneToOne;
 import io.requery.Persistable;
@@ -46,7 +46,7 @@ public interface Person extends Observable, Parcelable, Persistable {
     String getName();
 
     @Bindable
-    @Index(name = "email_index")
+    @Index(value = "email_index")
     String getEmail();
 
     @Bindable
@@ -69,4 +69,7 @@ public interface Person extends Observable, Parcelable, Persistable {
 
     @OneToMany(mappedBy = "owner", cascade = {CascadeAction.DELETE, CascadeAction.SAVE})
     List<Phone> getPhoneNumberList();
+
+    @ManyToMany(mappedBy = "members", cascade = {CascadeAction.DELETE, CascadeAction.SAVE})
+    List<Group> getGroups();
 }

@@ -26,6 +26,16 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
 /**
  * Indicates a field as being an indexed column in a database table.
+ *
+ * Example:
+ * <pre><code>
+ *    {@literal @}Entity
+ *     public class AbstractPerson {
+ *         ...
+ *        {@literal @}Index(value = "email_index") String email;
+ *         ...
+ *     }
+ * </code></pre>
  */
 @Documented
 @Target({FIELD, METHOD})
@@ -33,7 +43,9 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 public @interface Index {
 
     /**
-     * @return name of the index.
+     * @return name(s) of the index this column belongs to. If empty a generic name will be created
+     * for the index. If the multiple columns in the same entity have same index name they will be
+     * created as one multi column index.
      */
-    String name() default "";
+    String[] value() default "";
 }

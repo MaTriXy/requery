@@ -48,9 +48,9 @@ class ModelGenerator implements SourceGenerator {
     private final ProcessingEnvironment processingEnvironment;
     private final Collection<? extends EntityDescriptor> entities;
 
-    public ModelGenerator(ProcessingEnvironment processingEnvironment,
-                          String packageName,
-                          Collection<? extends EntityDescriptor> entities) {
+    ModelGenerator(ProcessingEnvironment processingEnvironment,
+                   String packageName,
+                   Collection<? extends EntityDescriptor> entities) {
         this.processingEnvironment = processingEnvironment;
         this.packageName = packageName;
         this.entities = entities;
@@ -59,7 +59,7 @@ class ModelGenerator implements SourceGenerator {
     @Override
     public void generate() throws IOException {
         ClassName typeName = ClassName.get(packageName, "Models");
-        TypeSpec.Builder type = TypeSpec.classBuilder(typeName.simpleName())
+        TypeSpec.Builder type = TypeSpec.classBuilder(typeName)
                 .addModifiers(Modifier.PUBLIC)
                 .addMethod(MethodSpec.constructorBuilder()
                         .addModifiers(Modifier.PRIVATE).build());
@@ -78,7 +78,7 @@ class ModelGenerator implements SourceGenerator {
             fieldType.add("new $T($S)\n", ClassName.get(EntityModelBuilder.class), model);
 
             types.forEach(e -> fieldType.add(".addType($T.$L)\n",
-                    ClassName.bestGuess(e.typeName().toString()), e.staticTypeName()));
+                    ClassName.bestGuess(e.typeName().toString()), EntityGenerator.TYPE_NAME));
 
             fieldType.add(".build()");
             field.initializer("$L", fieldType.build());

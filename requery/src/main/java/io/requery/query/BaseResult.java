@@ -19,10 +19,12 @@ package io.requery.query;
 import io.requery.meta.Attribute;
 import io.requery.meta.Type;
 import io.requery.proxy.EntityProxy;
+import io.requery.reactivex.ReactiveSupport;
 import io.requery.rx.RxSupport;
 import io.requery.util.CloseableIterable;
 import io.requery.util.CloseableIterator;
 import io.requery.util.function.Consumer;
+import io.requery.util.function.Supplier;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -50,6 +52,10 @@ public abstract class BaseResult<E> implements Result<E>, CloseableIterable<E> {
     private final Integer maxSize;
     private final Queue<CloseableIterator<E>> iterators;
     private final AtomicBoolean closed;
+
+    protected BaseResult() {
+        this(null);
+    }
 
     protected BaseResult(Integer maxSize) {
         this.maxSize = maxSize;
@@ -94,8 +100,18 @@ public abstract class BaseResult<E> implements Result<E>, CloseableIterable<E> {
     }
 
     @Override
+    public E firstOr(Supplier<E> supplier) {
+        try (CloseableIterator<E> iterator = iterator()) {
+            if (iterator.hasNext()) {
+                return iterator.next();
+            }
+        }
+        return supplier.get();
+    }
+
+    @Override
     public E firstOrNull() {
-        return firstOr(null);
+        return firstOr((E)null);
     }
 
     @Override
@@ -125,12 +141,27 @@ public abstract class BaseResult<E> implements Result<E>, CloseableIterable<E> {
 
     @Override
     public rx.Observable<E> toObservable() {
-        return RxSupport.toObservable(this, maxSize);
+        return RxSupport.toObservable(this);
     }
 
     @Override
     public rx.Observable<Result<E>> toSelfObservable() {
         return RxSupport.toResultObservable(this);
+    }
+
+    @Override
+    public io.reactivex.Flowable<E> flowable() {
+        return ReactiveSupport.toFlowable(this);
+    }
+
+    @Override
+    public io.reactivex.Observable<E> observable() {
+        return flowable().toObservable();
+    }
+
+    @Override
+    public io.reactivex.Observable<Result<E>> observableResult() {
+        return ReactiveSupport.toObservableResult(this);
     }
 
     @Override
@@ -156,10 +187,10 @@ public abstract class BaseResult<E> implements Result<E>, CloseableIterable<E> {
                 Type<E> type = null;
                 if (key instanceof Attribute) {
                     Attribute attribute = (Attribute) key;
-                    type = (Type<E>) attribute.declaringType();
+                    type = (Type<E>) attribute.getDeclaringType();
                 }
                 if (type != null) {
-                    EntityProxy<E> proxy = type.proxyProvider().apply(value);
+                    EntityProxy<E> proxy = type.getProxyProvider().apply(value);
                     map.put(proxy.get((Attribute<E, K>) key), value);
                 } else if (value instanceof Tuple) {
                     map.put(((Tuple) value).get(key), value);

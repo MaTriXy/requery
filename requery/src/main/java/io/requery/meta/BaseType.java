@@ -22,56 +22,63 @@ import io.requery.util.Objects;
 import io.requery.util.function.Function;
 import io.requery.util.function.Supplier;
 
-import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
 abstract class BaseType<T> implements Type<T> {
 
-    protected Class<T> type;
-    protected Class<? super T> baseType;
-    protected String name;
-    protected boolean cacheable;
-    protected boolean stateless;
-    protected boolean readOnly;
-    protected Set<Attribute<T, ?>> attributes;
-    protected Supplier<T> factory;
-    protected Function<T, EntityProxy<T>> proxyProvider;
-    protected Set<Class<?>> referencedTypes;
-    protected Set<Attribute<T, ?>> keyAttributes;
-    protected Attribute<T, ?> keyAttribute;
-    protected String[] tableCreateAttributes;
-    protected Supplier<?> builderFactory;
-    protected Function<?, T> buildFunction;
+    Class<T> type;
+    Class<? super T> baseType;
+    String name;
+    boolean cacheable;
+    boolean stateless;
+    boolean readOnly;
+    boolean immutable;
+    Set<Attribute<T, ?>> attributes;
+    Set<QueryExpression<?>> expressions;
+    Supplier<T> factory;
+    Function<T, EntityProxy<T>> proxyProvider;
+    Set<Class<?>> referencedTypes;
+    String[] tableCreateAttributes;
+    String[] tableUniqueIndexes;
+    Supplier<?> builderFactory;
+    Function<?, T> buildFunction;
+    Set<Attribute<T, ?>> keyAttributes;
+    Attribute<T, ?> keyAttribute;
 
-    public BaseType() {
+    BaseType() {
         cacheable = true;
         referencedTypes = new LinkedHashSet<>();
     }
 
     @Override
-    public String name() {
+    public String getName() {
         return name;
     }
 
     @Override
-    public Class<T> classType() {
+    public Class<T> getClassType() {
         return type;
     }
 
     @Override
-    public Class<? super T> baseType() {
+    public Class<? super T> getBaseType() {
         return baseType;
     }
 
     @Override
-    public ExpressionType type() {
+    public ExpressionType getExpressionType() {
         return ExpressionType.NAME;
     }
 
     @Override
     public boolean isCacheable() {
         return cacheable;
+    }
+
+    @Override
+    public boolean isImmutable() {
+        return immutable;
     }
 
     @Override
@@ -90,67 +97,60 @@ abstract class BaseType<T> implements Type<T> {
     }
 
     @Override
-    public Set<Attribute<T, ?>> attributes() {
+    public Set<Attribute<T, ?>> getAttributes() {
         return attributes;
     }
 
     @Override
-    public Set<Attribute<T, ?>> keyAttributes() {
-        if (keyAttributes == null) {
-            keyAttributes = new LinkedHashSet<>();
-            for (Attribute<T, ?> attribute : attributes) {
-                if (attribute.isKey()) {
-                    keyAttributes.add(attribute);
-                }
-            }
-            keyAttributes = Collections.unmodifiableSet(keyAttributes);
-            if (keyAttributes.size() == 1) {
-                keyAttribute = keyAttributes.iterator().next();
-            }
-        }
+    public Set<Attribute<T, ?>> getKeyAttributes() {
         return keyAttributes;
     }
 
     @Override
-    public Attribute<T, ?> singleKeyAttribute() {
+    public Attribute<T, ?> getSingleKeyAttribute() {
         return keyAttribute;
     }
 
     @Override
-    public <B> Supplier<B> builderFactory() {
+    public <B> Supplier<B> getBuilderFactory() {
         @SuppressWarnings("unchecked")
         Supplier<B> supplier = (Supplier<B>) builderFactory;
         return supplier;
     }
 
     @Override
-    public <B> Function<B, T> buildFunction() {
+    public <B> Function<B, T> getBuildFunction() {
         @SuppressWarnings("unchecked")
         Function<B, T> function = (Function<B, T>) buildFunction;
         return function;
     }
 
     @Override
-    public Supplier<T> factory() {
+    public Supplier<T> getFactory() {
         return factory;
     }
 
     @Override
-    public Function<T, EntityProxy<T>> proxyProvider() {
+    public Function<T, EntityProxy<T>> getProxyProvider() {
         return proxyProvider;
     }
 
     @Override
-    public String[] tableCreateAttributes() {
+    public String[] getTableCreateAttributes() {
         return tableCreateAttributes;
+    }
+
+    @Override
+    public String[] getTableUniqueIndexes() {
+        return tableUniqueIndexes;
     }
 
     @Override
     public boolean equals(Object obj) {
         if (obj instanceof Type) {
             Type other = (Type) obj;
-            return Objects.equals(classType(), other.classType()) &&
-                   Objects.equals(name(), other.name());
+            return Objects.equals(getClassType(), other.getClassType()) &&
+                   Objects.equals(getName(), other.getName());
         }
         return false;
     }
@@ -165,6 +165,8 @@ abstract class BaseType<T> implements Type<T> {
         return "classType: " + type.toString() +
             " name: " + name +
             " readonly: " + readOnly +
+            " immutable: " + immutable +
+            " stateless: " + stateless +
             " cacheable: " + cacheable;
     }
 }

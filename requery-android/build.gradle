@@ -10,15 +10,16 @@ apply plugin: 'com.android.library'
 apply plugin: 'maven-publish'
 
 android {
-    compileSdkVersion 23
-    buildToolsVersion "23.0.2"
+    compileSdkVersion 24
+    buildToolsVersion "$android_buildtools_version"
 
     defaultConfig {
-        minSdkVersion 15
-        targetSdkVersion 23
+        minSdkVersion 14
+        targetSdkVersion 24
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles 'proguard-rules.pro'
     }
     buildTypes {
         release {
@@ -30,34 +31,42 @@ android {
         sourceCompatibility JavaVersion.VERSION_1_7
         targetCompatibility JavaVersion.VERSION_1_7
     }
+    lintOptions {
+        abortOnError false
+        disable 'InvalidPackage'
+    }
+    packagingOptions {
+        exclude 'META-INF/rxjava.properties'
+    }
 }
 
 dependencies {
     compile project(':requery')
-    compile 'com.android.support:appcompat-v7:23.1.1'
-    compile 'com.android.support:recyclerview-v7:23.1.1'
-    compile 'com.android.databinding:library:1.0-rc5'
+    compile 'com.android.support:support-v4:24.2.0'
+    compile 'com.android.support:recyclerview-v7:24.2.0'
+    compile 'net.zetetic:android-database-sqlcipher:3.5.1'
+    compile 'io.requery:sqlite-android:3.14.1'
     androidTestCompile project(':requery-test')
-    androidTestCompile 'com.android.support.test:runner:0.4'
-    androidTestCompile 'com.android.support.test:rules:0.4'
+    androidTestCompile 'com.android.support.test:runner:0.5'
+    androidTestCompile 'com.android.support.test:rules:0.5'
 }
 
-Properties properties = new Properties()
-File localProperties = project.rootProject.file('local.properties')
-if (localProperties.exists()) {
-    properties.load(localProperties.newDataInputStream())
-}
+publish.dependsOn 'assembleRelease'
+bintrayUpload.dependsOn 'assembleRelease'
 
 android.libraryVariants
 publishing {
     publications {
         maven(MavenPublication) {
-            groupId 'io.requery'
+            // leaving out dependencies (components.java) intentionally
+            groupId rootProject.group
             artifactId project.name
             version rootProject.version
-            artifact "build/outputs/aar/${project.name}-release.aar"
-            artifact(javadocJar) {
-                classifier 'javadoc'
+            artifact getReleaseArtifact()
+            artifact sourcesJar
+            artifact javadocJar
+            pom.withXml {
+                asNode().children().last() + project.pomXml
             }
         }
     }
@@ -65,12 +74,16 @@ publishing {
     repositories {
         maven {
             credentials {
-                username = properties.getProperty('bintray.user')
-                password = properties.getProperty('bintray.apikey')
+                username = bintray.user
+                password = bintray.key
             }
             url 'http://oss.jfrog.org/artifactory/oss-snapshot-local'
         }
     }
+}
+
+def getReleaseArtifact() {
+    return "build/outputs/aar/${project.name}-release.aar"
 }
 
 task sourcesJar(type: Jar) {

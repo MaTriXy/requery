@@ -17,24 +17,108 @@
 package io.requery.sql.platform;
 
 import io.requery.meta.Attribute;
+import io.requery.meta.Type;
+import io.requery.query.Expression;
+import io.requery.query.element.LimitedElement;
+import io.requery.query.element.OrderByElement;
+import io.requery.query.element.QueryElement;
 import io.requery.sql.BaseType;
 import io.requery.sql.GeneratedColumnDefinition;
 import io.requery.sql.Keyword;
-import io.requery.sql.LimitDefinition;
 import io.requery.sql.Mapping;
-import io.requery.sql.OffsetFetchLimitDefinition;
 import io.requery.sql.QueryBuilder;
+import io.requery.sql.gen.Generator;
+import io.requery.sql.gen.OffsetFetchGenerator;
+import io.requery.sql.gen.OrderByGenerator;
+import io.requery.sql.gen.UpsertMergeGenerator;
+import io.requery.sql.gen.Output;
 import io.requery.sql.type.PrimitiveBooleanType;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
+import java.util.Map;
+import java.util.Set;
 
 /**
- * Platform for Microsoft SQL Server 2012 or later T-SQL.
+ * Microsoft SQL Server 2012 or later
  */
 public class SQLServer extends Generic {
+
+    private final GeneratedColumnDefinition generatedColumnDefinition;
+
+    public SQLServer() {
+        generatedColumnDefinition = new IdentityColumnDefinition();
+    }
+
+    @Override
+    public boolean supportsIfExists() {
+        return false;
+    }
+
+    @Override
+    public GeneratedColumnDefinition generatedColumnDefinition() {
+        return generatedColumnDefinition;
+    }
+
+    @Override
+    public Generator<LimitedElement> limitGenerator() {
+        return new OrderByOffsetFetchLimit();
+    }
+
+    @Override
+    public Generator<Map<Expression<?>, Object>> upsertGenerator() {
+        return new MergeGenerator();
+    }
+
+    @Override
+    public Generator<OrderByElement> orderByGenerator() {
+        return new OrderByWithLimitGenerator();
+    }
+
+    @Override
+    public void addMappings(Mapping mapping) {
+        super.addMappings(mapping);
+        mapping.replaceType(Types.BOOLEAN, new BitBooleanType());
+    }
+
+    private static class MergeGenerator extends UpsertMergeGenerator {
+        @Override
+        public void write(Output output, Map<Expression<?>, Object> values) {
+            super.write(output, values);
+            // for some reason insists on having a semicolon on a merge statement only
+            output.builder().append(";");
+        }
+    }
+
+    private class OrderByWithLimitGenerator extends OrderByGenerator {
+
+        private void forceOrderBy(QueryElement<?> query) {
+            if (query.getLimit() != null &&
+                (query.getOrderByExpressions() == null || query.getOrderByExpressions().isEmpty())) {
+                Set<Type<?>> types = query.entityTypes();
+                if (types != null && !types.isEmpty()) {
+                    Type<?> type = types.iterator().next();
+                    for (Attribute attribute : type.getAttributes()) {
+                        if (attribute.isKey()) {
+                            query.orderBy((Expression) attribute);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        @Override
+        public void write(Output output, OrderByElement query) {
+            // hack needed to force order by expression if limit present
+            if (query instanceof QueryElement) {
+                forceOrderBy((QueryElement<?>) query);
+            }
+            super.write(output, query);
+        }
+    }
 
     private static class IdentityColumnDefinition implements GeneratedColumnDefinition {
 
@@ -54,22 +138,16 @@ public class SQLServer extends Generic {
             int increment = 1;
             qb.keyword(Keyword.IDENTITY);
             qb.openParenthesis()
-              .value(start).comma().value(increment)
-              .closeParenthesis();
+                .value(start).comma().value(increment)
+                .closeParenthesis();
         }
     }
 
-    private static class OrderByOffsetFetchLimit extends OffsetFetchLimitDefinition {
-
+    private static class OrderByOffsetFetchLimit extends OffsetFetchGenerator {
         @Override
-        public boolean requireOrderBy() {
-            return true;
-        }
-
-        @Override
-        public void appendLimit(QueryBuilder qb, Integer limit, Integer offset) {
+        public void write(QueryBuilder qb, Integer limit, Integer offset) {
             // always include the offset
-            super.appendLimit(qb, limit, offset == null ? 0 : offset);
+            super.write(qb, limit, offset == null ? 0 : offset);
         }
     }
 
@@ -81,7 +159,7 @@ public class SQLServer extends Generic {
         }
 
         @Override
-        public Object identifier() {
+        public Object getIdentifier() {
             return "bit";
         }
 
@@ -101,34 +179,5 @@ public class SQLServer extends Generic {
             throws SQLException {
             statement.setBoolean(index, value);
         }
-    }
-
-    private final GeneratedColumnDefinition generatedColumnDefinition;
-    private final LimitDefinition limitDefinition;
-
-    public SQLServer() {
-        generatedColumnDefinition = new IdentityColumnDefinition();
-        limitDefinition = new OrderByOffsetFetchLimit();
-    }
-
-    @Override
-    public boolean supportsIfExists() {
-        return false;
-    }
-
-    @Override
-    public GeneratedColumnDefinition generatedColumnDefinition() {
-        return generatedColumnDefinition;
-    }
-
-    @Override
-    public LimitDefinition limitDefinition() {
-        return limitDefinition;
-    }
-
-    @Override
-    public void addMappings(Mapping mapping) {
-        super.addMappings(mapping);
-        mapping.replaceType(Types.BOOLEAN, new BitBooleanType());
     }
 }

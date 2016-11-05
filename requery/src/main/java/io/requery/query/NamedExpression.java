@@ -33,23 +33,23 @@ public class NamedExpression<V> extends FieldExpression<V> {
         return new NamedExpression<>(name, String.class);
     }
 
-    NamedExpression(String name, Class<V> type) {
+    private NamedExpression(String name, Class<V> type) {
         this.name = name;
         this.type = type;
     }
 
     @Override
-    public String name() {
+    public String getName() {
         return name;
     }
 
     @Override
-    public Class<V> classType() {
+    public Class<V> getClassType() {
         return type;
     }
 
     @Override
-    public ExpressionType type() {
+    public ExpressionType getExpressionType() {
         return ExpressionType.NAME;
     }
 }

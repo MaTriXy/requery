@@ -1,6 +1,7 @@
 package io.requery.test.model;
 
 
+import io.requery.CascadeAction;
 import io.requery.Column;
 import io.requery.Convert;
 import io.requery.Entity;
@@ -9,7 +10,7 @@ import io.requery.Key;
 import io.requery.OneToOne;
 
 @Entity
-public class AbstractAddress {
+public class AbstractAddress extends Coordinate {
 
     @Key @Generated
     protected int id;
@@ -27,16 +28,11 @@ public class AbstractAddress {
 
     protected String city;
 
-    @OneToOne(mappedBy = "address")
+    @OneToOne(mappedBy = "address", cascade = {CascadeAction.DELETE, CascadeAction.SAVE})
     protected Person person;
 
     @Convert(AddressTypeConverter.class)
     protected AddressType type;
-
-    @Column(value = "0.0", nullable = false)
-    protected float latitude;
-    @Column(value = "0.0", nullable = false)
-    protected float longitude;
 
     @Override
     public String toString() {

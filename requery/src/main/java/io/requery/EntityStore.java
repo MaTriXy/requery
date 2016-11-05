@@ -19,6 +19,8 @@ package io.requery;
 import io.requery.meta.Attribute;
 import io.requery.query.Result;
 
+import javax.annotation.CheckReturnValue;
+
 /**
  * The primary interface for interacting with {@link Entity} objects. This interface supports the
  * basic insert/update/delete operations.
@@ -52,7 +54,8 @@ public interface EntityStore<T, R> extends Queryable<T>, AutoCloseable {
     <E extends T> R insert(E entity);
 
     /**
-     * Insert a collection of entities.
+     * Insert a collection of entities. This method may perform additional optimizations not
+     * present in the single element insert method.
      *
      * @param entities to insert
      * @param <E>      entity type
@@ -61,14 +64,81 @@ public interface EntityStore<T, R> extends Queryable<T>, AutoCloseable {
     <E extends T> R insert(Iterable<E> entities);
 
     /**
+     * Inserts the given entity returning the generated key after the entity is inserted. This
+     * entity must not have previously been inserted otherwise an {@link PersistenceException}
+     * may be thrown.
+     *
+     * @param entity   non null entity to insert
+     * @param keyClass key class
+     * @param <K>      key type
+     * @param <E>      entity type
+     * @return the operation result.
+     */
+    <K, E extends T> R insert(E entity, Class<K> keyClass);
+
+    /**
+     * Insert a collection of entities returning the generated keys for the inserted entities in
+     * the order they were inserted.
+     *
+     * @param entities to insert
+     * @param keyClass key class
+     * @param <K>      key type
+     * @param <E>      entity type
+     * @return the operation result.
+     */
+    <K, E extends T> R insert(Iterable<E> entities, Class<K> keyClass);
+
+    /**
      * Update the given entity. If the given entity has modified properties those changes will be
-     * persisted otherwise the method will do nothing.
+     * persisted otherwise the method will do nothing. A property is considered modified
+     * if its associated setter has been called, modifying the state of a property's content
+     * will not cause an update to happen.
      *
      * @param entity to update
      * @param <E>    entity type
      * @return the operation result.
      */
     <E extends T> R update(E entity);
+
+    /**
+     * Updates a collection of entities. This method may perform additional optimizations not
+     * present in the single element update method.
+     *
+     * @param entities to update
+     * @param <E>      entity type
+     * @return the operation result.
+     */
+    <E extends T> R update(Iterable<E> entities);
+
+    /**
+     * Update specific attributes of entity regardless of any modification state.
+     *
+     * @param entity     to refresh
+     * @param attributes attributes to update, attributes should be of type E
+     * @param <E>        entity type
+     * @return the operation result.
+     */
+    <E extends T> R update(E entity, Attribute<?, ?>... attributes);
+
+    /**
+     * Upserts (insert or update) the given entity. Note that upserting may be an expensive
+     * operation on some platforms and may not be supported in all cases or platforms.
+     *
+     * @param entity non null entity to insert
+     * @param <E>    entity type
+     * @return the operation result.
+     */
+    <E extends T> R upsert(E entity);
+
+    /**
+     * Upserts (inserts or updates) a collection of entities. This method may perform additional
+     * optimizations not present in the single upsert method.
+     *
+     * @param entities to update
+     * @param <E>      entity type
+     * @return the operation result.
+     */
+    <E extends T> R upsert(Iterable<E> entities);
 
     /**
      * Refresh the given entity. This refreshes the already loaded properties in the entity. If no
@@ -140,11 +210,13 @@ public interface EntityStore<T, R> extends Queryable<T>, AutoCloseable {
      * @param <K>  key type
      * @return an operation returning the entity if found.
      */
+    @CheckReturnValue
     <E extends T, K> R findByKey(Class<E> type, K key);
 
     /**
      * @return a {@link BlockingEntityStore} version of this entity store. If the implementation
      * is already blocking may return itself.
      */
+    @CheckReturnValue
     BlockingEntityStore<T> toBlocking();
 }

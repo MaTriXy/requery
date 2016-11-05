@@ -18,18 +18,19 @@ package io.requery.async;
 
 import io.requery.BlockingEntityStore;
 import io.requery.EntityStore;
-import io.requery.query.Tuple;
 import io.requery.meta.Attribute;
 import io.requery.meta.QueryAttribute;
 import io.requery.query.Deletion;
 import io.requery.query.Expression;
 import io.requery.query.Insertion;
 import io.requery.query.Result;
-import io.requery.query.Selection;
 import io.requery.query.Scalar;
+import io.requery.query.Selection;
+import io.requery.query.Tuple;
 import io.requery.query.Update;
 import io.requery.util.Objects;
 
+import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -46,6 +47,7 @@ import java.util.function.Supplier;
  *
  * @author Nikhil Purushe
  */
+@ParametersAreNonnullByDefault
 public class CompletableEntityStore<T> implements CompletionStageEntityStore<T> {
 
     private final BlockingEntityStore<T> delegate;
@@ -85,11 +87,73 @@ public class CompletableEntityStore<T> implements CompletionStageEntityStore<T> 
     }
 
     @Override
+    public <K, E extends T> CompletionStage<K> insert(final E entity, final Class<K> keyClass) {
+        return CompletableFuture.supplyAsync(new Supplier<K>() {
+            @Override
+            public K get() {
+                return delegate.insert(entity, keyClass);
+            }
+        }, executor);
+    }
+
+    @Override
+    public <K, E extends T> CompletionStage<Iterable<K>> insert(final Iterable<E> entities,
+                                                                final Class<K> keyClass) {
+        return CompletableFuture.supplyAsync(new Supplier<Iterable<K>>() {
+            @Override
+            public Iterable<K> get() {
+                return delegate.insert(entities, keyClass);
+            }
+        }, executor);
+    }
+
+    @Override
     public <E extends T> CompletableFuture<E> update(final E entity) {
         return CompletableFuture.supplyAsync(new Supplier<E>() {
             @Override
             public E get() {
                 return delegate.update(entity);
+            }
+        }, executor);
+    }
+
+    @Override
+    public <E extends T> CompletionStage<E> update(final E entity,
+                                                   final Attribute<?, ?>... attributes) {
+        return CompletableFuture.supplyAsync(new Supplier<E>() {
+            @Override
+            public E get() {
+                return delegate.update(entity, attributes);
+            }
+        }, executor);
+    }
+
+    @Override
+    public <E extends T> CompletableFuture<Iterable<E>> update(final Iterable<E> entities) {
+        return CompletableFuture.supplyAsync(new Supplier<Iterable<E>>() {
+            @Override
+            public Iterable<E> get() {
+                return delegate.update(entities);
+            }
+        }, executor);
+    }
+
+    @Override
+    public <E extends T> CompletionStage<E> upsert(final E entity) {
+        return CompletableFuture.supplyAsync(new Supplier<E>() {
+            @Override
+            public E get() {
+                return delegate.upsert(entity);
+            }
+        }, executor);
+    }
+
+    @Override
+    public <E extends T> CompletableFuture<Iterable<E>> upsert(final Iterable<E> entities) {
+        return CompletableFuture.supplyAsync(new Supplier<Iterable<E>>() {
+            @Override
+            public Iterable<E> get() {
+                return delegate.upsert(entities);
             }
         }, executor);
     }
@@ -233,6 +297,16 @@ public class CompletableEntityStore<T> implements CompletionStageEntityStore<T> 
     @Override
     public Selection<Scalar<Integer>> count(QueryAttribute<?, ?>... attributes) {
         return delegate.count(attributes);
+    }
+
+    @Override
+    public Result<Tuple> raw(String query, Object... parameters) {
+        return delegate.raw(query, parameters);
+    }
+
+    @Override
+    public <E extends T> Result<E> raw(Class<E> type, String query, Object... parameters) {
+        return delegate.raw(type, query, parameters);
     }
 
     @Override

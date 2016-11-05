@@ -61,6 +61,14 @@ public interface Mapping {
     FieldType mapAttribute(Attribute<?, ?> attribute);
 
     /**
+     * Get the mapped storage type mapping for a given sql type.
+     *
+     * @param sqlType {@link java.sql.Types} type
+     * @return the mapped class for the given sql type.
+     */
+    Class<?> typeOf(int sqlType);
+
+    /**
      * Given the expression read it from {@link ResultSet} instance.
      *
      * @param expression expression to read
@@ -81,6 +89,16 @@ public interface Mapping {
      * @throws SQLException on a failure to read from the {@link ResultSet}
      */
     boolean readBoolean(ResultSet results, int column) throws SQLException;
+
+    /**
+     * Reads a byte value.
+     *
+     * @param results {@link ResultSet} instance
+     * @param column  column index
+     * @return read value
+     * @throws SQLException on a failure to read from the {@link ResultSet}
+     */
+    byte readByte(ResultSet results, int column) throws SQLException;
 
     /**
      * Reads a boolean value.
@@ -154,6 +172,16 @@ public interface Mapping {
      * @throws SQLException on a failure to set the expression on the {@link PreparedStatement}
      */
     void writeBoolean(PreparedStatement statement, int index, boolean value) throws SQLException;
+
+    /**
+     * Sets a byte value
+     *
+     * @param statement prepared statement
+     * @param index     statement index
+     * @param value     type to be bound
+     * @throws SQLException on a failure to set the expression on the {@link PreparedStatement}
+     */
+    void writeByte(PreparedStatement statement, int index, byte value) throws SQLException;
 
     /**
      * Sets a short value

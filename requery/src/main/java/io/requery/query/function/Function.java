@@ -16,8 +16,10 @@
 
 package io.requery.query.function;
 
+import io.requery.query.Expression;
 import io.requery.query.FieldExpression;
 import io.requery.query.ExpressionType;
+import io.requery.query.NamedExpression;
 import io.requery.util.Objects;
 
 public abstract class Function<V> extends FieldExpression<V> {
@@ -26,13 +28,13 @@ public abstract class Function<V> extends FieldExpression<V> {
     private final Class<V> type;
     private String alias;
 
-    protected Function(String name, Class<V> type) {
+    public Function(String name, Class<V> type) {
         this.name = name;
         this.type = type;
     }
 
     @Override
-    public ExpressionType type() {
+    public ExpressionType getExpressionType() {
         return ExpressionType.FUNCTION;
     }
 
@@ -43,21 +45,34 @@ public abstract class Function<V> extends FieldExpression<V> {
     }
 
     @Override
-    public String aliasName() {
+    public String getAlias() {
         return alias;
     }
 
     @Override
-    public Class<V> classType() {
+    public Class<V> getClassType() {
         return type;
     }
 
     @Override
-    public String name() {
+    public String getName() {
         return name;
     }
 
     public abstract Object[] arguments();
+
+    public Expression<?> expressionForArgument(int i) {
+        Object value = arguments()[i];
+        if (value instanceof Expression) {
+            return (Expression<?>) value;
+        } else {
+            if (value == null) {
+                return NamedExpression.of("null", type);
+            } else {
+                return new ArgumentExpression<>(value.getClass());
+            }
+        }
+    }
 
     @Override
     public boolean equals(Object obj) {
@@ -66,9 +81,9 @@ public abstract class Function<V> extends FieldExpression<V> {
         }
         if(obj instanceof Function) {
             Function other = (Function) obj;
-            return Objects.equals(name(), other.name()) &&
-                   Objects.equals(classType(), other.classType()) &&
-                   Objects.equals(aliasName(), other.aliasName()) &&
+            return Objects.equals(getName(), other.getName()) &&
+                   Objects.equals(getClassType(), other.getClassType()) &&
+                   Objects.equals(getAlias(), other.getAlias()) &&
                    Objects.equals(arguments(), other.arguments());
         }
         return false;
@@ -76,6 +91,30 @@ public abstract class Function<V> extends FieldExpression<V> {
 
     @Override
     public int hashCode() {
-        return Objects.hash(name(), classType(), aliasName(), arguments());
+        return Objects.hash(getName(), getClassType(), getAlias(), arguments());
+    }
+
+    private static class ArgumentExpression<X> implements Expression<X> {
+
+        private final Class<X> type;
+
+        ArgumentExpression(Class<X> type) {
+            this.type = type;
+        }
+
+        @Override
+        public String getName() {
+            return "";
+        }
+
+        @Override
+        public Class<X> getClassType() {
+            return type;
+        }
+
+        @Override
+        public ExpressionType getExpressionType() {
+            return ExpressionType.FUNCTION;
+        }
     }
 }

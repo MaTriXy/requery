@@ -28,17 +28,17 @@ import java.time.ZoneId;
 public class OffsetDateTimeConverter implements Converter<OffsetDateTime, java.sql.Timestamp> {
 
     @Override
-    public Class<OffsetDateTime> mappedType() {
+    public Class<OffsetDateTime> getMappedType() {
         return OffsetDateTime.class;
     }
 
     @Override
-    public Class<java.sql.Timestamp> persistedType() {
+    public Class<java.sql.Timestamp> getPersistedType() {
         return java.sql.Timestamp.class;
     }
 
     @Override
-    public Integer persistedSize() {
+    public Integer getPersistedSize() {
         return null;
     }
 
@@ -48,7 +48,7 @@ public class OffsetDateTimeConverter implements Converter<OffsetDateTime, java.s
             return null;
         }
         Instant instant = value.toInstant();
-        return new java.sql.Timestamp(instant.toEpochMilli());
+        return java.sql.Timestamp.from(instant);
     }
 
     @Override
@@ -57,7 +57,6 @@ public class OffsetDateTimeConverter implements Converter<OffsetDateTime, java.s
         if (value == null) {
             return null;
         }
-        Instant instant = Instant.ofEpochMilli(value.getTime());
-        return OffsetDateTime.ofInstant(instant, ZoneId.systemDefault());
+        return OffsetDateTime.ofInstant(value.toInstant(), ZoneId.systemDefault());
     }
 }

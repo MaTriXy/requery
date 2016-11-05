@@ -18,10 +18,12 @@ package io.requery.query;
 
 import io.requery.query.function.Abs;
 import io.requery.query.function.Avg;
+import io.requery.query.function.Function;
 import io.requery.query.function.Lower;
 import io.requery.query.function.Max;
 import io.requery.query.function.Min;
 import io.requery.query.function.Round;
+import io.requery.query.function.Substr;
 import io.requery.query.function.Sum;
 import io.requery.query.function.Trim;
 import io.requery.query.function.Upper;
@@ -46,13 +48,13 @@ public abstract class FieldExpression<V> implements
     }
 
     @Override
-    public abstract String name();
+    public abstract String getName();
 
     @Override
-    public abstract ExpressionType type();
+    public abstract ExpressionType getExpressionType();
 
     @Override
-    public abstract Class<V> classType();
+    public abstract Class<V> getClassType();
 
     @Override
     public Expression<V> as(String alias) {
@@ -60,7 +62,7 @@ public abstract class FieldExpression<V> implements
     }
 
     @Override
-    public String aliasName() {
+    public String getAlias() {
         return null;
     }
 
@@ -120,6 +122,11 @@ public abstract class FieldExpression<V> implements
     }
 
     @Override
+    public Substr<V> substr(int offset, int length) {
+        return Substr.substr(this, offset, length);
+    }
+
+    @Override
     public Upper<V> upper() {
         return Upper.upper(this);
     }
@@ -127,6 +134,16 @@ public abstract class FieldExpression<V> implements
     @Override
     public Lower<V> lower() {
         return Lower.lower(this);
+    }
+
+    @Override
+    public Function<V> function(String name) {
+        return new Function<V>(name, getClassType()) {
+            @Override
+            public Object[] arguments() {
+                return new Object[]{FieldExpression.this};
+            }
+        };
     }
 
     @Override
@@ -168,6 +185,42 @@ public abstract class FieldExpression<V> implements
     }
 
     @Override
+    public LogicalCondition<? extends Expression<V>, ? extends Expression<V>>
+        equal(Expression<V> value) {
+        return new ExpressionCondition<>(this, Operator.EQUAL, value);
+    }
+
+    @Override
+    public LogicalCondition<? extends Expression<V>, ? extends Expression<V>>
+        notEqual(Expression<V> value) {
+        return new ExpressionCondition<>(this, Operator.NOT_EQUAL, value);
+    }
+
+    @Override
+    public LogicalCondition<? extends Expression<V>, ? extends Expression<V>>
+        lessThan(Expression<V> value) {
+        return new ExpressionCondition<>(this, Operator.LESS_THAN, value);
+    }
+
+    @Override
+    public LogicalCondition<? extends Expression<V>, ? extends Expression<V>>
+        greaterThan(Expression<V> value) {
+        return new ExpressionCondition<>(this, Operator.GREATER_THAN, value);
+    }
+
+    @Override
+    public LogicalCondition<? extends Expression<V>, ? extends Expression<V>>
+        lessThanOrEqual(Expression<V> value) {
+        return new ExpressionCondition<>(this, Operator.LESS_THAN_OR_EQUAL, value);
+    }
+
+    @Override
+    public LogicalCondition<? extends Expression<V>, ? extends Expression<V>>
+        greaterThanOrEqual(Expression<V> value) {
+        return new ExpressionCondition<>(this, Operator.GREATER_THAN_OR_EQUAL, value);
+    }
+
+    @Override
     public LogicalCondition<? extends Expression<V>, V> eq(V value) {
         return equal(value);
     }
@@ -198,6 +251,42 @@ public abstract class FieldExpression<V> implements
     }
 
     @Override
+    public LogicalCondition<? extends Expression<V>, ? extends Expression<V>>
+        eq(Expression<V> value) {
+        return equal(value);
+    }
+
+    @Override
+    public LogicalCondition<? extends Expression<V>, ? extends Expression<V>>
+        ne(Expression<V> value) {
+        return notEqual(value);
+    }
+
+    @Override
+    public LogicalCondition<? extends Expression<V>, ? extends Expression<V>>
+        lt(Expression<V> value) {
+        return lessThan(value);
+    }
+
+    @Override
+    public LogicalCondition<? extends Expression<V>, ? extends Expression<V>>
+        gt(Expression<V> value) {
+        return greaterThan(value);
+    }
+
+    @Override
+    public LogicalCondition<? extends Expression<V>, ? extends Expression<V>>
+        lte(Expression<V> value) {
+        return lessThanOrEqual(value);
+    }
+
+    @Override
+    public LogicalCondition<? extends Expression<V>, ? extends Expression<V>>
+        gte(Expression<V> value) {
+        return greaterThanOrEqual(value);
+    }
+
+    @Override
     public LogicalCondition<? extends Expression<V>, Collection<V>> in(Collection<V> values) {
         Objects.requireNotNull(values);
         return new ExpressionCondition<>(this, Operator.IN, values);
@@ -223,7 +312,7 @@ public abstract class FieldExpression<V> implements
 
     @Override
     public LogicalCondition<? extends Expression<V>, V> isNull() {
-        return new ExpressionCondition<>(this, Operator.NULL, null);
+        return new ExpressionCondition<>(this, Operator.IS_NULL, null);
     }
 
     @Override
@@ -258,16 +347,16 @@ public abstract class FieldExpression<V> implements
         }
         if(obj instanceof FieldExpression) {
             FieldExpression other = (FieldExpression) obj;
-            return Objects.equals(name(), other.name()) &&
-                   Objects.equals(classType(), other.classType()) &&
-                   Objects.equals(aliasName(), other.aliasName());
+            return Objects.equals(getName(), other.getName()) &&
+                   Objects.equals(getClassType(), other.getClassType()) &&
+                   Objects.equals(getAlias(), other.getAlias());
         }
         return false;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(name(), classType(), aliasName());
+        return Objects.hash(getName(), getClassType(), getAlias());
     }
 
     private static class ExpressionCondition<L, R> implements LogicalCondition<L, R> {
@@ -283,27 +372,31 @@ public abstract class FieldExpression<V> implements
         }
 
         @Override
-        public <V> LogicalCondition<?, ?> and(Condition<V, ?> condition) {
-            return new ExpressionCondition<>(this, Operator.AND, condition);
+        public <V> LogicalCondition<LogicalCondition<L, R>, Condition<?, ?>> and(
+                Condition<V, ?> condition) {
+            return new ExpressionCondition<LogicalCondition<L, R>, Condition<?, ?>>(
+                    this, Operator.AND, condition);
         }
 
         @Override
-        public <V> LogicalCondition<?, ?> or(Condition<V, ?> condition) {
-            return new ExpressionCondition<>(this, Operator.OR, condition);
+        public <V> LogicalCondition<LogicalCondition<L, R>, Condition<?, ?>> or(
+                Condition<V, ?> condition) {
+            return new ExpressionCondition<LogicalCondition<L, R>, Condition<?, ?>>(
+                    this, Operator.OR, condition);
         }
 
         @Override
-        public Operator operator() {
+        public Operator getOperator() {
             return operator;
         }
 
         @Override
-        public R rightOperand() {
+        public R getRightOperand() {
             return rightOperand;
         }
 
         @Override
-        public L leftOperand() {
+        public L getLeftOperand() {
             return leftOperand;
         }
 
@@ -358,18 +451,23 @@ public abstract class FieldExpression<V> implements
         }
 
         @Override
-        public String name() {
-            return expression.name();
+        public String getName() {
+            return expression.getName();
         }
 
         @Override
-        public Class<X> classType() {
-            return expression.classType();
+        public Class<X> getClassType() {
+            return expression.getClassType();
         }
 
         @Override
-        public ExpressionType type() {
+        public ExpressionType getExpressionType() {
             return ExpressionType.ORDERING;
+        }
+
+        @Override
+        public Expression<X> getInnerExpression() {
+            return expression;
         }
     }
 }

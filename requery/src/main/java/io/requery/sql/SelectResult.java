@@ -18,10 +18,13 @@ package io.requery.sql;
 
 import io.requery.PersistenceException;
 import io.requery.TransactionListener;
+import io.requery.meta.Attribute;
 import io.requery.query.BaseResult;
 import io.requery.query.Expression;
 import io.requery.query.element.QueryElement;
-import io.requery.rx.ObservableResult;
+import io.requery.TransactionListenable;
+import io.requery.query.element.QueryWrapper;
+import io.requery.sql.gen.DefaultOutput;
 import io.requery.util.CloseableIterable;
 import io.requery.util.CloseableIterator;
 import io.requery.util.function.Supplier;
@@ -38,7 +41,7 @@ import java.util.Set;
  *
  * @author Nikhil Purushe
  */
-class SelectResult<E> extends BaseResult<E> implements ObservableResult<E>, CloseableIterable<E> {
+class SelectResult<E> extends BaseResult<E> implements TransactionListenable, QueryWrapper, CloseableIterable<E> {
 
     private final QueryElement<?> query;
     private final RuntimeConfiguration configuration;
@@ -48,10 +51,10 @@ class SelectResult<E> extends BaseResult<E> implements ObservableResult<E>, Clos
     private final int resultSetType;
     private final int resultSetConcurrency;
     private final boolean keepStatement;
-    private QueryGenerator generator;
     private String sql;
     private Statement statement;
     private Connection connection;
+    private boolean closeConnection;
 
     SelectResult(RuntimeConfiguration configuration,
                  QueryElement<?> query, ResultReader<E> reader) {
@@ -59,8 +62,9 @@ class SelectResult<E> extends BaseResult<E> implements ObservableResult<E>, Clos
         this.query = query;
         this.configuration = configuration;
         this.reader = reader;
-        selection = query.selection();
+        selection = query.getSelection();
         limit = query.getLimit();
+        closeConnection = true;
         keepStatement = false;
         resultSetType = ResultSet.TYPE_FORWARD_ONLY;
         resultSetConcurrency = ResultSet.CONCUR_READ_ONLY;
@@ -70,7 +74,8 @@ class SelectResult<E> extends BaseResult<E> implements ObservableResult<E>, Clos
         if (keepStatement && statement != null) {
             return statement;
         }
-        Connection connection = configuration.connectionProvider().getConnection();
+        Connection connection = configuration.getConnection();
+        closeConnection = !(connection instanceof UncloseableConnection);
         Statement statement;
         if (!prepared) {
             statement = connection.createStatement(resultSetType, resultSetConcurrency);
@@ -84,26 +89,25 @@ class SelectResult<E> extends BaseResult<E> implements ObservableResult<E>, Clos
         return statement;
     }
 
-    private void createQuery(int skip, int take) {
+    private BoundParameters createQuery(int skip, int take) {
         // query can't already have been limited and skip/take must be non-defaults
         if (limit == null && take > 0 && take != Integer.MAX_VALUE) {
             query.limit(take).offset(skip);
         }
-        generator = new QueryGenerator<>(query);
-        QueryBuilder qb = new QueryBuilder(configuration.queryBuilderOptions());
-        sql = generator.toSql(qb, configuration.platform());
+        DefaultOutput generator = new DefaultOutput(configuration, query);
+        sql = generator.toSql();
+        return generator.parameters();
     }
 
     @Override
     public CloseableIterator<E> iterator(int skip, int take) {
         try {
-            createQuery(skip, take);
             // connection held by the iterator if statement not reused
-            BoundParameters parameters = generator.parameters();
+            BoundParameters parameters = createQuery(skip, take);
             Statement statement = createStatement(!parameters.isEmpty());
             statement.setFetchSize(limit == null ? 0 : limit);
 
-            StatementListener listener = configuration.statementListener();
+            StatementListener listener = configuration.getStatementListener();
             listener.beforeExecuteQuery(statement, sql, parameters);
 
             ResultSet results;
@@ -111,16 +115,31 @@ class SelectResult<E> extends BaseResult<E> implements ObservableResult<E>, Clos
                 results = statement.executeQuery(sql);
             } else {
                 PreparedStatement preparedStatement = (PreparedStatement) statement;
-                Mapping mapping = configuration.mapping();
+                Mapping mapping = configuration.getMapping();
                 for (int i = 0; i < parameters.count(); i++) {
                     Expression expression = parameters.expressionAt(i);
-                    mapping.write(expression, preparedStatement, i + 1, parameters.valueAt(i));
+                    Object value = parameters.valueAt(i);
+                    if (expression instanceof Attribute) {
+                        // extract foreign key reference
+                        Attribute attribute = (Attribute) expression;
+                        if (attribute.isAssociation() &&
+                            (attribute.isForeignKey() || attribute.isKey())) {
+                            // get the referenced value
+                            if (value != null &&
+                                ((Expression<?>)expression).getClassType()
+                                    .isAssignableFrom(value.getClass())) {
+                                value = Attributes.replaceKeyReference(value, attribute);
+                            }
+                        }
+                    }
+                    mapping.write(expression, preparedStatement, i + 1, value);
                 }
                 results = preparedStatement.executeQuery();
             }
             listener.afterExecuteQuery(statement);
 
-            return new ResultSetIterator<>(reader, results, selection, !keepStatement);
+            return new ResultSetIterator<>(
+                reader, results, selection, !keepStatement, closeConnection);
         } catch (SQLException e) {
             throw new PersistenceException(e);
         }
@@ -146,9 +165,9 @@ class SelectResult<E> extends BaseResult<E> implements ObservableResult<E>, Clos
     }
 
     @Override
-    public void addTransactionListener(Supplier<TransactionListener> transactionListener) {
-        if (transactionListener != null) {
-            configuration.transactionListenerFactories().add(transactionListener);
+    public void addTransactionListener(Supplier<TransactionListener> supplier) {
+        if (supplier != null) {
+            configuration.getTransactionListenerFactories().add(supplier);
         }
     }
 

@@ -53,9 +53,32 @@ public @interface Entity {
     String model() default "";
 
     /**
+     * @return the builder class used to construct this entity if it is {@link #immutable()}.
+     * Note the builder class must have a zero-argument constructor that is either package visible
+     * or public.
+     */
+    Class<?> builder() default void.class;
+
+    /**
      * @return true if the given object should be cached by the entity store, false otherwise.
      */
     boolean cacheable() default true;
+
+    /**
+     * @return false if they class being annotated as entity is not extendable and the annotation
+     * processor should not generate a type extending or implementing it but instead generate only
+     * the attribute meta information. Defaults to true unless this annotation is placed on a class
+     * that is final then defaults to false.
+     */
+    boolean extendable() default true;
+
+    /**
+     * @return true if the entity object is immutable. If true the entity cannot have changeable
+     * relations and will not have any state, this implies {@link #stateless()} is true.
+     * Defaults to false however if this annotation is placed in conjunction with immutable type
+     * annotations e.g. @AutoValue from Google on an object then defaults to true.
+     */
+    boolean immutable() default false;
 
     /**
      * @return true if the entity object should have state tracking disabled, which allows partial
@@ -63,21 +86,6 @@ public @interface Entity {
      * false, unless the entity is {@link #immutable()} in which case the value is true.
      */
     boolean stateless() default false;
-
-    /**
-     * @return true if the entity object is immutable. If true the entity can be constructed via
-     * queries only and cannot be modified/refreshed or contain changeable relations. Defaults to
-     * false however if this annotation is placed in conjunction with immutable type annotations
-     * e.g. @AutoValue from Google on an object then defaults to true.
-     */
-    boolean immutable() default false;
-
-    /**
-     * @return the builder class used to construct this entity if it is {@link #immutable()}.
-     * Note the builder class must have a zero-argument constructor that is either package visible
-     * or public.
-     */
-    Class<?> builder() default void.class;
 
     /**
      * Defines the name style of properties in the target entity e.g. for a property 'name' and

@@ -140,6 +140,9 @@ public abstract class FunctionalTest extends RandomData {
             persons.add(person);
         }
         data.insert(persons);
+        for (Person person : persons) {
+            assertTrue(person.getId() != 0);
+        }
         int people = 0;
         for (Person ignored : data.select(Person.class).get()) {
             people++;
@@ -150,7 +153,7 @@ public abstract class FunctionalTest extends RandomData {
     @Test
     public void testInsertConcurrent() throws InterruptedException {
         ExecutorService executorService = Executors.newFixedThreadPool(3);
-        final int count = 5;
+        final int count = 3;
         final CountDownLatch latch = new CountDownLatch(count);
         final Map<Integer, Person> map = new HashMap<>();
         for (int i = 0; i < count; i++) {
@@ -256,6 +259,37 @@ public abstract class FunctionalTest extends RandomData {
     }
 
     @Test
+    public void testFindByKeyDelete() {
+        Person person = randomPerson();
+        Address address = randomAddress();
+        person.setAddress(address);
+        data.insert(person);
+        assertTrue(address.getId() > 0);
+
+        Person other = data.findByKey(Person.class, person.getId());
+        assertSame(person, other);
+        data.delete(other);
+
+        other = data.findByKey(Person.class, person.getId());
+        assertNull(other);
+        Address cached = data.findByKey(Address.class, address.getId());
+        assertNull(cached);
+    }
+
+    @Test
+    public void testFindByKeyDeleteInverse() {
+        Person person = randomPerson();
+        Address address = randomAddress();
+        person.setAddress(address);
+        data.insert(person);
+        data.delete(address);
+        person = data.findByKey(Person.class, person.getId());
+        assertNull(person);
+        Address cached = data.findByKey(Address.class, address.getId());
+        assertNull(cached);
+    }
+
+    @Test
     public void testTransactionRollback() {
         ArrayList<Integer> ids = new ArrayList<>();
         try (Transaction transaction = data.transaction().begin()) {
@@ -288,16 +322,16 @@ public abstract class FunctionalTest extends RandomData {
         Calendar calendar = Calendar.getInstance();
         calendar.set(1983, Calendar.NOVEMBER, 11);
         person.setBirthday(calendar.getTime());
-        EntityProxy<Person> proxy = Person.$TYPE.proxyProvider().apply(person);
+        EntityProxy<Person> proxy = Person.$TYPE.getProxyProvider().apply(person);
         int count = 0;
-        for (Attribute<Person, ?>  ignored : Person.$TYPE.attributes()) {
+        for (Attribute<Person, ?>  ignored : Person.$TYPE.getAttributes()) {
             if (proxy.getState(ignored) == PropertyState.MODIFIED) {
                 count++;
             }
         }
         assertEquals(2, count);
         data.update(person);
-        for (Attribute<Person, ?> ignored : Person.$TYPE.attributes()) {
+        for (Attribute<Person, ?> ignored : Person.$TYPE.getAttributes()) {
             if (proxy.getState(ignored) == PropertyState.MODIFIED) {
                 fail();
             }
@@ -440,7 +474,6 @@ public abstract class FunctionalTest extends RandomData {
 
     @Test
     public void testFillResult() {
-        data.delete(Person.class).get();
         Person person = randomPerson();
         data.insert(person);
         assertEquals(1, data.select(Person.class)
@@ -449,7 +482,6 @@ public abstract class FunctionalTest extends RandomData {
 
     @Test
     public void testListResult() {
-        data.delete(Person.class).get();
         Person person = randomPerson();
         data.insert(person);
         assertEquals(1, data.select(Person.class).get().toList().size());
@@ -459,11 +491,14 @@ public abstract class FunctionalTest extends RandomData {
     public void testDeleteCascadeOneToOne() {
         Address address = randomAddress();
         data.insert(address);
-        assertTrue(address.getId() > 0);
+        int id = address.getId();
+        assertTrue(id > 0);
         Person person = randomPerson();
+        person.setAddress(address);
         data.insert(person);
         data.delete(person);
         assertNull(address.getPerson());
+        assertNull(data.findByKey(Address.class, id));
     }
 
     @Test
@@ -526,7 +561,7 @@ public abstract class FunctionalTest extends RandomData {
     }
 
     @Test
-    public void testInsertOneToManyInverse() {
+    public void testInsertOneToManyInverseUpdate() {
         Person person = randomPerson();
         data.insert(person);
         Phone phone1 = randomPhone();
@@ -537,6 +572,24 @@ public abstract class FunctionalTest extends RandomData {
         HashSet<Phone> set = new HashSet<>(person.getPhoneNumbers().toList());
         assertEquals(2, set.size());
         assertTrue(set.containsAll(Arrays.asList(phone1, phone2)));
+        assertEquals(person, phone1.getOwner());
+        assertEquals(person, phone2.getOwner());
+    }
+
+    @Test
+    public void testInsertOneToManyInverse() {
+        Person person = randomPerson();
+        Phone phone1 = randomPhone();
+        Phone phone2 = randomPhone();
+        phone1.setOwner(person);
+        person.getPhoneNumbers().add(phone1);
+        person.getPhoneNumbers().add(phone2);
+        data.insert(person);
+        HashSet<Phone> set = new HashSet<>(person.getPhoneNumbers().toList());
+        assertEquals(2, set.size());
+        assertTrue(set.containsAll(Arrays.asList(phone1, phone2)));
+        assertEquals(person, phone1.getOwner());
+        assertEquals(person, phone2.getOwner());
     }
 
     @Test
@@ -553,15 +606,28 @@ public abstract class FunctionalTest extends RandomData {
     }
 
     @Test
-    public void testInsertOneToManyOneInsert() {
+    public void testInsertOneToManyInsert() {
         Person person = randomPerson();
         Phone phone1 = randomPhone();
         Phone phone2 = randomPhone();
         person.getPhoneNumbers().add(phone1);
         person.getPhoneNumbers().add(phone2);
         data.insert(person);
-        data.refresh(person, Person.PHONE_NUMBERS);
         HashSet<Phone> set = new HashSet<>(person.getPhoneNumbers().toList());
+        assertEquals(2, set.size());
+        assertTrue(set.containsAll(Arrays.asList(phone1, phone2)));
+        assertSame(2, data.select(Phone.class).get().toList().size());
+    }
+
+    @Test
+    public void testInsertOneToManyInsertThroughList() {
+        Person person = randomPerson();
+        Phone phone1 = randomPhone();
+        Phone phone2 = randomPhone();
+        person.getPhoneNumbersList().add(phone1);
+        person.getPhoneNumbersList().add(phone2);
+        data.insert(person);
+        HashSet<Phone> set = new HashSet<>(person.getPhoneNumbersList());
         assertEquals(2, set.size());
         assertTrue(set.containsAll(Arrays.asList(phone1, phone2)));
     }
@@ -652,9 +718,27 @@ public abstract class FunctionalTest extends RandomData {
     }
 
     @Test
+    public void testManyOrderBy() {
+        Group group = new Group();
+        group.setName("Group");
+        data.insert(group);
+        for (int i = 3; i >= 0; i--) {
+            Person person = randomPerson();
+            person.setName(new String(Character.toChars(65 + i)));
+            data.insert(person);
+            group.getOwners().add(person);
+        }
+        data.update(group);
+        data.refresh(group, Group.OWNERS);
+        List<Person> list = group.getOwners().toList();
+        assertEquals("A", list.get(0).getName());
+        assertEquals("B", list.get(1).getName());
+        assertEquals("C", list.get(2).getName());
+    }
+
+    @Test
     public void testSingleQueryWhere() {
         final String name = "duplicateFirstName";
-        data.delete(Person.class).where(Person.NAME.equal(name)).get();
         for (int i = 0; i < 10; i++) {
             Person person = randomPerson();
             person.setName(name);
@@ -679,7 +763,6 @@ public abstract class FunctionalTest extends RandomData {
     @Test
     public void testSingleQueryLimitSkip() {
         final String name = "duplicateFirstName";
-        data.delete(Person.class).where(Person.NAME.equal(name)).get();
         for (int i = 0; i < 10; i++) {
             Person person = randomPerson();
             person.setName(name);
@@ -688,11 +771,14 @@ public abstract class FunctionalTest extends RandomData {
         for (int i = 0; i < 3; i++) {
             try (Result<Person> query = data.select(Person.class)
                     .where(Person.NAME.equal(name))
+                    .orderBy(Person.NAME)
                     .limit(5).get()) {
                 assertEquals(5, query.toList().size());
             }
             try (Result<Person> query = data.select(Person.class)
-                    .where(Person.NAME.equal(name)).limit(5).offset(5).get()) {
+                    .where(Person.NAME.equal(name))
+                    .orderBy(Person.NAME)
+                    .limit(5).offset(5).get()) {
                 assertEquals(5, query.toList().size());
             }
         }
@@ -700,14 +786,9 @@ public abstract class FunctionalTest extends RandomData {
 
     @Test
     public void testSingleQueryWhereNull() {
-        data.delete(Person.class).where(Person.NAME.isNull()).get();
         Person person = randomPerson();
         person.setName(null);
         data.insert(person);
-        try (Result<Person> query = data.select(Person.class)
-                .where(Person.NAME.equal(null)).get()) {
-            assertEquals(1, query.toList().size());
-        }
         try (Result<Person> query = data.select(Person.class)
                 .where(Person.NAME.isNull()).get()) {
             assertEquals(1, query.toList().size());
@@ -737,6 +818,39 @@ public abstract class FunctionalTest extends RandomData {
         assertEquals(100, data.count(Person.class).get().value().intValue());
         data.delete(persons);
         assertEquals(0, data.count(Person.class).get().value().intValue());
+    }
+
+    @Test
+    public void testQueryByForeignKey() {
+        Person person = randomPerson();
+        data.insert(person);
+        Phone phone1 = randomPhone();
+        Phone phone2 = randomPhone();
+        person.getPhoneNumbers().add(phone1);
+        person.getPhoneNumbers().add(phone2);
+        data.update(person);
+        assertTrue(person.getPhoneNumbersSet().contains(phone1));
+        try (Result<Phone> result = data.select(Phone.class).where(Phone.OWNER.eq(person)).get()) {
+            assertTrue(person.getPhoneNumbersList().containsAll(result.toList()));
+            assertEquals(2, person.getPhoneNumbersList().size());
+            assertEquals(2, result.toList().size());
+        }
+        // by id
+        try (Result<Phone> result =
+                 data.select(Phone.class).where(Phone.OWNER_ID.eq(person.getId())).get()) {
+            assertTrue(person.getPhoneNumbersList().containsAll(result.toList()));
+            assertEquals(2, person.getPhoneNumbersList().size());
+            assertEquals(2, result.toList().size());
+        }
+    }
+
+    @Test
+    public void testQueryByUUID() {
+        Person person = randomPerson();
+        data.insert(person);
+        UUID uuid = person.getUUID();
+        Person result = data.select(Person.class).where(Person.UUID.eq(uuid)).get().first();
+        assertEquals(person, result);
     }
 
     @Test
@@ -806,6 +920,21 @@ public abstract class FunctionalTest extends RandomData {
         assertTrue(result >= 5); // derby rounds up
     }
 
+    @Test
+    public void testQueryJoinOrderBy() {
+        Person person = randomPerson();
+        person.setAddress(randomAddress());
+        data.insert(person);
+        // not a useful query just tests the sql output
+        Result<Address> result = data.select(Address.class)
+                .join(Person.class).on(Person.ADDRESS_ID.eq(Person.ID))
+                .where(Person.ID.eq(person.getId()))
+                .orderBy(Address.CITY.desc())
+                .get();
+        List<Address> addresses = result.toList();
+        assertTrue(addresses.size() > 0);
+    }
+
     @SuppressWarnings("MagicConstant")
     @Test
     public void testQuerySelectMin() {
@@ -833,6 +962,17 @@ public abstract class FunctionalTest extends RandomData {
         person.setName("  Name  ");
         data.insert(person);
         Tuple result = data.select(Person.NAME.trim().as("name")).get().first();
+        String name = result.get(0);
+        assertEquals(name, "Name");
+    }
+
+    @Test
+    public void testQuerySelectSubstr() {
+        // TODO fix for SQLServer
+        Person person = randomPerson();
+        person.setName("  Name");
+        data.insert(person);
+        Tuple result = data.select(Person.NAME.substr(3, 6).as("name")).get().first();
         String name = result.get(0);
         assertEquals(name, "Name");
     }
@@ -1006,6 +1146,19 @@ public abstract class FunctionalTest extends RandomData {
     }
 
     @Test
+    public void testQueryUpdateRefresh() {
+        Person person = randomPerson();
+        data.insert(person);
+        int id = person.getId();
+        int rowCount = data.update(Person.class)
+                .set(Person.AGE, 50)
+                .where(Person.ID.eq(id)).get().value();
+        assertEquals(1, rowCount);
+        Person selected = data.select(Person.class).where(Person.ID.eq(id)).get().first();
+        assertSame(50, selected.getAge());
+    }
+
+    @Test
     public void testQueryCoalesce() {
         Person person = randomPerson();
         person.setName("Carol");
@@ -1099,6 +1252,81 @@ public abstract class FunctionalTest extends RandomData {
         assertTrue(result.size() == 2);
         assertTrue(result.get(0).get(0).equals("Carol"));
         assertTrue(result.get(1).get(0).equals("Hello!"));
+    }
+
+    @Test
+    public void testQueryRaw() {
+        final int count = 5;
+        List<Person> people = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            Person person = randomPerson();
+            data.insert(person);
+            people.add(person);
+        }
+        List<Long> resultIds = new ArrayList<>();
+        try (Result<Tuple> result = data.raw("select * from Person")) {
+            List<Tuple> list = result.toList();
+            assertEquals(count, list.size());
+            for (int i = 0; i < people.size(); i++) {
+                Tuple tuple = list.get(i);
+                String name = tuple.get("name");
+                assertEquals(people.get(i).getName(), name);
+                Number id = tuple.get("id");
+                assertEquals(people.get(i).getId(), id.intValue());
+                resultIds.add(id.longValue());
+            }
+        }
+        try (Result<Tuple> result = data.raw("select * from Person WHERE id IN ?", resultIds)) {
+            List<Tuple> list = result.toList();
+            List<Long> ids = new ArrayList<>(list.size());
+            for (Tuple tuple : list) {
+                ids.add(tuple.<Number>get("id").longValue());
+            }
+            assertEquals(resultIds, ids);
+        }
+        try (Result<Tuple> result = data.raw("select count(*) from Person")) {
+            Number number = result.first().get(0); // can be long or int depending on db
+            assertEquals(count, number.intValue());
+        }
+        try (Result<Tuple> result = data.raw("select * from Person WHERE id = ?", people.get(0))) {
+            assertEquals(result.first().<Number>get("id").intValue(), people.get(0).getId());
+        }
+    }
+
+    @Test
+    public void testQueryRawEntities() {
+        final int count = 5;
+        List<Person> people = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            Person person = randomPerson();
+            data.insert(person);
+            people.add(person);
+        }
+        List<Integer> resultIds = new ArrayList<>();
+        try (Result<Person> result = data.raw(Person.class, "select * from Person")) {
+            List<Person> list = result.toList();
+            assertEquals(count, list.size());
+            for (int i = 0; i < people.size(); i++) {
+                Person person = list.get(i);
+                String name = person.getName();
+                assertEquals(people.get(i).getName(), name);
+                assertEquals(people.get(i).getId(), person.getId());
+                resultIds.add(person.getId());
+            }
+        }
+        try (Result<Person> result =
+                 data.raw(Person.class, "select * from Person WHERE id IN ?", resultIds)) {
+            List<Person> list = result.toList();
+            List<Integer> ids = new ArrayList<>(list.size());
+            for (Person tuple : list) {
+                ids.add(tuple.getId());
+            }
+            assertEquals(resultIds, ids);
+        }
+        try (Result<Person> result =
+                 data.raw(Person.class, "select * from Person WHERE id = ?", people.get(0))) {
+            assertEquals(result.first().getId(), people.get(0).getId());
+        }
     }
 
     @Test(expected = PersistenceException.class)

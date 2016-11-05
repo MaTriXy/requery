@@ -23,4 +23,5 @@ public enum QueryType {
     UPSERT,
     DELETE,
     TRUNCATE,
+    MERGE,
 }

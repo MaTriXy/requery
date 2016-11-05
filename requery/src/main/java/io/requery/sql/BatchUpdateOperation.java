@@ -19,6 +19,7 @@ package io.requery.sql;
 import io.requery.PersistenceException;
 import io.requery.query.element.QueryElement;
 import io.requery.query.element.QueryOperation;
+import io.requery.sql.gen.DefaultOutput;
 
 import java.sql.BatchUpdateException;
 import java.sql.Connection;
@@ -39,7 +40,8 @@ class BatchUpdateOperation<E> extends PreparedQueryOperation implements QueryOpe
     private final boolean batchInStatement;
 
     BatchUpdateOperation(RuntimeConfiguration configuration,
-                         E[] elements, int length,
+                         E[] elements,
+                         int length,
                          ParameterBinder<E> parameterBinder,
                          GeneratedResultReader generatedResultReader,
                          boolean batchInStatement) {
@@ -51,20 +53,18 @@ class BatchUpdateOperation<E> extends PreparedQueryOperation implements QueryOpe
     }
 
     @Override
-    public int[] execute(QueryElement<int[]> query) {
+    public int[] evaluate(QueryElement<int[]> query) {
         int[] result = batchInStatement ? null : new int[length];
 
-        try (Connection connection = configuration.connectionProvider().getConnection()) {
-            QueryGenerator generator = new QueryGenerator<>(query);
-            QueryBuilder qb = new QueryBuilder(configuration.queryBuilderOptions());
-            String sql = generator.toSql(qb, configuration.platform());
-            StatementListener listener = configuration.statementListener();
+        try (Connection connection = configuration.getConnection()) {
+            DefaultOutput generator = new DefaultOutput(configuration, query);
+            String sql = generator.toSql();
+            StatementListener listener = configuration.getStatementListener();
 
             try (PreparedStatement statement = prepare(sql, connection)) {
-
                 for (int i = 0; i < length; i++) {
                     E element = elements[i];
-                    parameterBinder.bindParameters(element, statement);
+                    parameterBinder.bindParameters(statement, element, null);
                     if (batchInStatement) {
                         statement.addBatch();
                     } else {

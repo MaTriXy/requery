@@ -18,6 +18,7 @@ package io.requery;
 
 import io.requery.meta.Attribute;
 
+import javax.annotation.CheckReturnValue;
 import java.util.concurrent.Callable;
 
 /**
@@ -35,7 +36,25 @@ public interface BlockingEntityStore<T> extends EntityStore<T, Object>, Transact
     <E extends T> Iterable<E> insert(Iterable<E> entities);
 
     @Override
+    <K, E extends T> K insert(E entity, Class<K> keyClass);
+
+    @Override
+    <K, E extends T> Iterable<K> insert(Iterable<E> entities, Class<K> keyClass);
+
+    @Override
     <E extends T> E update(E entity);
+
+    @Override
+    <E extends T> Iterable<E> update(Iterable<E> entities);
+
+    @Override
+    <E extends T> E update(E entity, Attribute<?, ?>... attributes);
+
+    @Override
+    <E extends T> E upsert(E entity);
+
+    @Override
+    <E extends T> Iterable<E> upsert(Iterable<E> entities);
 
     @Override
     <E extends T> E refresh(E entity);
@@ -56,6 +75,7 @@ public interface BlockingEntityStore<T> extends EntityStore<T, Object>, Transact
     <E extends T> Void delete(Iterable<E> entities);
 
     @Override
+    @CheckReturnValue
     <E extends T, K> E findByKey(Class<E> type, K key);
 
     @Override

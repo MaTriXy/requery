@@ -19,40 +19,46 @@ package io.requery.test;
 import io.requery.cache.EntityCacheBuilder;
 import io.requery.meta.EntityModel;
 import io.requery.query.Result;
+import io.requery.query.Tuple;
 import io.requery.sql.Configuration;
 import io.requery.sql.ConfigurationBuilder;
-import io.requery.sql.QueryableStore;
+import io.requery.sql.EntityDataStore;
 import io.requery.sql.SchemaModifier;
 import io.requery.sql.TableCreationMode;
 import io.requery.sql.platform.SQLite;
-import io.requery.test.modelautovalue.Models;
-import io.requery.test.modelautovalue.Person;
-import io.requery.test.modelautovalue.PersonType;
-import io.requery.test.modelautovalue.Phone;
-import io.requery.test.modelautovalue.PhoneType;
+import io.requery.test.autovalue.Models;
+import io.requery.test.autovalue.Person;
+import io.requery.test.autovalue.PersonType;
+import io.requery.test.autovalue.Phone;
+import io.requery.test.autovalue.PhoneType;
+import io.requery.util.function.Consumer;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
 import javax.sql.CommonDataSource;
-import java.io.Serializable;
 import java.net.MalformedURLException;
-import java.net.URL;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 public class AutoValueModelTest {
 
-    protected QueryableStore<Serializable> data;
+    protected EntityDataStore<Object> data;
 
-    int randomPerson() throws MalformedURLException {
+    int randomPerson() {
         Random random = new Random();
         String[] firstNames = new String[]{"Alice", "Bob", "Carol"};
         String[] lastNames = new String[]{"Smith", "Lee", "Jones"};
@@ -70,21 +76,20 @@ public class AutoValueModelTest {
             .value(PersonType.UUID, UUID.randomUUID())
             .value(PersonType.BIRTHDAY, calendar.getTime())
             .value(PersonType.ABOUT, "About this person")
-            .value(PersonType.HOMEPAGE, new URL("http://www.google.com"))
             .get().first().get(PersonType.ID);
     }
 
     @Before
     public void setup() throws SQLException {
         CommonDataSource dataSource = DatabaseType.getDataSource(new SQLite());
-        EntityModel model = Models.MODELAUTOVALUE;
+        EntityModel model = Models.AUTOVALUE;
         Configuration configuration = new ConfigurationBuilder(dataSource, model)
             .useDefaultLogging()
             .setEntityCache(new EntityCacheBuilder(model)
                 .useReferenceCache(true)
                 .build())
             .build();
-        data = new QueryableStore<>(configuration);
+        data = new EntityDataStore<>(configuration);
         SchemaModifier tables = new SchemaModifier(configuration);
         tables.dropTables();
         TableCreationMode mode = TableCreationMode.CREATE_NOT_EXISTS;
@@ -103,11 +108,8 @@ public class AutoValueModelTest {
     public void testSelectAll() {
         List<Integer> added = new ArrayList<>();
         for (int i = 0; i < 10; i++) {
-            try {
-                added.add( randomPerson() );
-            } catch (MalformedURLException e) {
-                throw new RuntimeException(e);
-            }
+
+            added.add( randomPerson() );
         }
         Result<Person> result = data.select(Person.class).get();
         for (Person p : result) {
@@ -116,12 +118,73 @@ public class AutoValueModelTest {
     }
 
     @Test
-    public void testInsertReference() {
-        try {
-            randomPerson();
-        } catch (MalformedURLException e) {
-            throw new RuntimeException(e);
+    public void testInsert() {
+        Set<Integer> ids = new HashSet<>();
+        for (int i = 0; i < 10; i++) {
+            Person p = Person.builder()
+                .setName("person" + i)
+                .setAge(30)
+                .setEmail("test@example.com")
+                .setUUID(UUID.randomUUID())
+                .setBirthday(new Date())
+                .setAbout("About me")
+                .build();
+            Integer key = data.insert(p, Integer.class);
+            assertTrue(key > 0);
+            ids.add(key);
         }
+        final Set<Integer> selected = new HashSet<>();
+        data.select(PersonType.ID).get().each(new Consumer<Tuple>() {
+            @Override
+            public void accept(Tuple tuple) {
+                selected.add(tuple.get(PersonType.ID));
+            }
+        });
+        assertEquals(ids, selected);
+    }
+
+    @Test
+    public void testUpdate() {
+        Person person = Person.builder()
+            .setName("Bob")
+            .setAge(30)
+            .setEmail("test@example.com")
+            .setUUID(UUID.randomUUID())
+            .setBirthday(new Date())
+            .setAbout("About me")
+            .build();
+        Integer key = data.insert(person, Integer.class);
+
+        Person renamed = person.toBuilder().setId(key).setName("Bobby").build();
+        data.update(renamed);
+
+        person = data.findByKey(Person.class, key);
+        assertTrue(person.getName().equals("Bobby"));
+    }
+
+    @Test
+    public void testDelete() throws MalformedURLException {
+        Integer key = randomPerson();
+        Person p = data.findByKey(Person.class, key);
+        assertNotNull(p);
+        data.delete(p);
+        p = data.findByKey(Person.class, key);
+        assertNull(p);
+    }
+
+    @Test
+    public void testRefresh() throws MalformedURLException {
+        Integer key = randomPerson();
+        Integer count = data.update(Person.class).set(PersonType.NAME, "Unknown").get().value();
+        assertTrue(count > 0);
+        Person p = data.findByKey(Person.class, key);
+        data.refresh(p);
+        assertEquals(p.getName(), "Unknown");
+    }
+
+    @Test
+    public void testInsertReference() {
+        randomPerson();
         Result<Person> result = data.select(Person.class).get();
         Person person = result.first();
         int id = data.insert(Phone.class)

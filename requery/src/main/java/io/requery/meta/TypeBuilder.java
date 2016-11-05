@@ -40,11 +40,12 @@ public class TypeBuilder<T> extends BaseType<T> {
                 if (o2.isKey()) {
                     return 1;
                 }
-                return o1.name().compareTo(o2.name());
+                return o1.getName().compareTo(o2.getName());
             }
         });
         this.name = name;
         this.referencedTypes = new LinkedHashSet<>();
+        this.expressions = new LinkedHashSet<>();
     }
 
     public TypeBuilder<T> setBaseType(Class<? super T> type) {
@@ -54,6 +55,11 @@ public class TypeBuilder<T> extends BaseType<T> {
 
     public TypeBuilder<T> setCacheable(boolean cacheable) {
         this.cacheable = cacheable;
+        return this;
+    }
+
+    public TypeBuilder<T> setImmutable(boolean immutable) {
+        this.immutable = immutable;
         return this;
     }
 
@@ -92,8 +98,18 @@ public class TypeBuilder<T> extends BaseType<T> {
         return this;
     }
 
+    public TypeBuilder<T> setTableUniqueIndexes(String[] indexes) {
+        this.tableUniqueIndexes = indexes;
+        return this;
+    }
+
     public TypeBuilder<T> addAttribute(Attribute<T, ?> attribute) {
         this.attributes.add(attribute);
+        return this;
+    }
+
+    public TypeBuilder<T> addExpression(QueryExpression<?> expression) {
+        this.expressions.add(expression);
         return this;
     }
 

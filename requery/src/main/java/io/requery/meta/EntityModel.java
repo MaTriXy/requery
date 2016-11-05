@@ -28,7 +28,7 @@ public interface EntityModel {
     /**
      * @return the name of the model (if given) otherwise an empty string.
      */
-    String name();
+    String getName();
 
     /**
      * Retrieves the meta {@link Type} information for the given entity class.
@@ -40,7 +40,17 @@ public interface EntityModel {
     <T> Type<T> typeOf(Class<? extends T> entityClass) throws NotMappedException;
 
     /**
+     * Check if the meta {@link Type} information for the given entity class
+     * is contained in this {@link EntityModel}.
+     *
+     * @param entityClass entity class
+     * @param <T>         entity type
+     * @return True, iff the {@link Type} representing the given entity class exists.
+     */
+    <T> boolean containsTypeOf(Class<? extends T> entityClass);
+
+    /**
      * @return Read only collection of all {@link Type} elements in this model.
      */
-    Set<Type<?>> allTypes();
+    Set<Type<?>> getTypes();
 }

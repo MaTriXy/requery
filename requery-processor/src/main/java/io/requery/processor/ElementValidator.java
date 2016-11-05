@@ -22,6 +22,8 @@ import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.Element;
 import javax.tools.Diagnostic;
 import java.lang.annotation.Annotation;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -34,52 +36,52 @@ class ElementValidator {
 
     private final Element element;
     private final Messager messager;
-    private boolean hasErrors;
     private boolean hasWarnings;
+    private final Map<Element, String> errors;
 
     ElementValidator(Element element, ProcessingEnvironment processingEnvironment) {
         this.element = element;
         this.messager = processingEnvironment.getMessager();
+        errors = new LinkedHashMap<>();
     }
 
-    public void error(String message) {
-        hasErrors = true;
+    void error(String message) {
         messager.printMessage(Diagnostic.Kind.ERROR, message, element);
+        errors.put(element, message);
     }
 
-    public void error(String message, Class<? extends Annotation> annotation) {
-        hasErrors = true;
-        String name = annotation.getName();
-        Optional<? extends AnnotationMirror> mirror = Mirrors.findAnnotationMirror(element, name);
-        if (mirror.isPresent()) {
-            messager.printMessage(Diagnostic.Kind.ERROR, message, element, mirror.get());
-        } else {
-            messager.printMessage(Diagnostic.Kind.ERROR, message);
-        }
+    void error(String message, Class<? extends Annotation> annotation) {
+        printMessage(annotation, Diagnostic.Kind.ERROR, message);
+        errors.put(element, message);
     }
 
-    public void warning(String message) {
+    void warning(String message) {
         hasWarnings = true;
         messager.printMessage(Diagnostic.Kind.WARNING, message, element);
     }
 
-    public void warning(String message, Class<? extends Annotation> annotation) {
+    void warning(String message, Class<? extends Annotation> annotation) {
         hasWarnings = true;
+        printMessage(annotation, Diagnostic.Kind.WARNING, message);
+    }
+
+    private void printMessage(Class<? extends Annotation> annotation,
+                              Diagnostic.Kind kind, String message) {
         String name = annotation.getName();
         Optional<? extends AnnotationMirror> mirror = Mirrors.findAnnotationMirror(element, name);
         if (mirror.isPresent()) {
-            messager.printMessage(Diagnostic.Kind.WARNING, message, element, mirror.get());
+            messager.printMessage(kind, message, element, mirror.get());
         } else {
-            messager.printMessage(Diagnostic.Kind.WARNING, message);
+            messager.printMessage(kind, message);
         }
     }
 
-    public boolean hasWarnings() {
+    boolean hasWarnings() {
         return hasWarnings;
     }
 
-    public boolean hasErrors() {
-        return hasErrors;
+    boolean hasErrors() {
+        return !errors.values().isEmpty();
     }
 
     static boolean hasErrors(Set<ElementValidator> validators) {
@@ -89,5 +91,15 @@ class ElementValidator {
             }
         }
         return false;
+    }
+
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder();
+        errors.entrySet().forEach(entry ->
+                sb.append(entry.getKey().getSimpleName())
+                  .append(" : ")
+                  .append(entry.getValue()));
+        return sb.toString();
     }
 }

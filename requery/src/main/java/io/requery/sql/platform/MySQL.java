@@ -16,22 +16,34 @@
 
 package io.requery.sql.platform;
 
+import io.requery.meta.Attribute;
+import io.requery.query.Expression;
 import io.requery.sql.AutoIncrementColumnDefinition;
 import io.requery.sql.GeneratedColumnDefinition;
-import io.requery.sql.LimitOffsetDefinition;
-import io.requery.sql.LimitDefinition;
+import io.requery.sql.QueryBuilder;
+import io.requery.sql.gen.LimitGenerator;
+import io.requery.sql.gen.Generator;
+import io.requery.sql.gen.Output;
+
+import java.util.Map;
+
+import static io.requery.sql.Keyword.DUPLICATE;
+import static io.requery.sql.Keyword.INSERT;
+import static io.requery.sql.Keyword.INTO;
+import static io.requery.sql.Keyword.KEY;
+import static io.requery.sql.Keyword.ON;
+import static io.requery.sql.Keyword.UPDATE;
+import static io.requery.sql.Keyword.VALUES;
 
 /**
- * platform configuration for MySQL SQL/PSM (5+).
+ * MySQL SQL/PSM (5+).
  */
 public class MySQL extends Generic {
 
     private final AutoIncrementColumnDefinition autoIncrementColumn;
-    private final LimitDefinition limitDefinition;
 
     public MySQL() {
         autoIncrementColumn = new AutoIncrementColumnDefinition();
-        limitDefinition = new LimitOffsetDefinition();
     }
 
     @Override
@@ -45,7 +57,54 @@ public class MySQL extends Generic {
     }
 
     @Override
-    public LimitDefinition limitDefinition() {
-        return limitDefinition;
+    public LimitGenerator limitGenerator() {
+        return new LimitGenerator();
+    }
+
+    @Override
+    public Generator<Map<Expression<?>, Object>> upsertGenerator() {
+        return new UpsertOnDuplicateKeyUpdate();
+    }
+
+    /**
+     * Performs an upsert (insert/update) using insert on duplicate key update syntax.
+     */
+    private static class UpsertOnDuplicateKeyUpdate implements
+        Generator<Map<Expression<?>, Object>> {
+
+        @Override
+        public void write(final Output output, final Map<Expression<?>, Object> values) {
+            QueryBuilder qb = output.builder();
+            // insert into <table> (<columns>) values (<values)
+            // on duplicate key update (<column>=VALUES(<value>...
+            // insert fragment
+            qb.keyword(INSERT, INTO)
+                .tableNames(values.keySet())
+                .openParenthesis()
+                .commaSeparatedExpressions(values.keySet())
+                .closeParenthesis().space()
+                .keyword(VALUES)
+                .openParenthesis()
+                .commaSeparated(values.keySet(), new QueryBuilder.Appender<Expression<?>>() {
+                    @Override
+                    public void append(QueryBuilder qb, Expression expression) {
+                        qb.append("?");
+                        output.parameters().add(expression, values.get(expression));
+                    }
+                })
+                .closeParenthesis().space()
+                .keyword(ON, DUPLICATE, KEY, UPDATE)
+                .commaSeparated(values.keySet(), new QueryBuilder.Appender<Expression<?>>() {
+                    @Override
+                    public void append(QueryBuilder qb, Expression<?> value) {
+                        qb.attribute((Attribute) value)
+                            .append("=")
+                            .append("values")
+                            .openParenthesis()
+                            .attribute((Attribute) value)
+                            .closeParenthesis().space();
+                    }
+                });
+        }
     }
 }

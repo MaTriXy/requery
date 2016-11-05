@@ -29,17 +29,17 @@ import java.time.ZonedDateTime;
 public class ZonedDateTimeConverter implements Converter<ZonedDateTime, java.sql.Timestamp> {
 
     @Override
-    public Class<ZonedDateTime> mappedType() {
+    public Class<ZonedDateTime> getMappedType() {
         return ZonedDateTime.class;
     }
 
     @Override
-    public Class<java.sql.Timestamp> persistedType() {
+    public Class<java.sql.Timestamp> getPersistedType() {
         return java.sql.Timestamp.class;
     }
 
     @Override
-    public Integer persistedSize() {
+    public Integer getPersistedSize() {
         return null;
     }
 
@@ -49,7 +49,7 @@ public class ZonedDateTimeConverter implements Converter<ZonedDateTime, java.sql
             return null;
         }
         Instant instant = value.toInstant();
-        return new java.sql.Timestamp(instant.toEpochMilli());
+        return java.sql.Timestamp.from(instant);
     }
 
     @Override

@@ -5,7 +5,7 @@ buildscript {
         }
     }
     dependencies {
-        classpath "net.ltgt.gradle:gradle-apt-plugin:0.5"
+        classpath "net.ltgt.gradle:gradle-apt-plugin:0.6"
     }
 }
 
@@ -20,20 +20,29 @@ dependencies {
     compile project(':requery')
     apt project(':requery-processor')
     compile fileTree(include: ['*.jar'], dir: 'libs') // for Oracle/SQL server JDBC drivers
-    compile 'io.reactivex:rxjava:1.1.1'
-    compile 'org.eclipse.persistence:javax.persistence:2.1.1'
-    compileOnly 'com.google.auto.value:auto-value:1.1'
-    apt 'com.google.auto.value:auto-value:1.1'
+    compile "io.reactivex:rxjava:$rxjava_version"
+    compile "io.reactivex.rxjava2:rxjava:$rxjava2_version"
+    compile "org.eclipse.persistence:javax.persistence:$jpa_version"
+    compileOnly 'com.google.auto.value:auto-value:1.2'
+    apt 'com.google.auto.value:auto-value:1.2'
     testCompile fileTree(include: ['*.jar'], dir: 'test-libs')
-    testCompile 'org.openjdk.jmh:jmh-core:1.11.3'
-    testApt 'org.openjdk.jmh:jmh-generator-annprocess:1.11.3'
-    testCompile 'mysql:mysql-connector-java:5.1.38'
-    testCompile 'org.postgresql:postgresql:9.4.1207.jre7'
-    testCompile 'org.xerial:sqlite-jdbc:3.8.11.1'
+    testCompile 'org.openjdk.jmh:jmh-core:1.12'
+    testApt 'org.openjdk.jmh:jmh-generator-annprocess:1.12'
+    testCompile 'mysql:mysql-connector-java:6.0.3'
+    testCompile 'org.postgresql:postgresql:9.4.1209.jre7'
+    testCompile 'org.xerial:sqlite-jdbc:3.8.11.2'
     testCompile 'org.apache.derby:derby:10.12.1.1'
-    testCompile 'com.h2database:h2:1.4.191'
-    testCompile 'org.hsqldb:hsqldb:2.3.3'
-    testCompile 'org.ehcache:ehcache:3.0.0.m3'
+    testCompile 'com.h2database:h2:1.4.192'
+    testCompile 'org.hsqldb:hsqldb:2.3.4'
+    testCompile 'org.ehcache:ehcache:3.1.1'
     testCompile 'javax.cache:cache-api:1.0.0'
+    testCompile 'com.google.code.gson:gson:2.6.2'
     compile 'junit:junit:4.12'
+}
+
+test {
+    testLogging {
+        exceptionFormat = 'full'
+        showStackTraces true
+    }
 }

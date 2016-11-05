@@ -19,6 +19,7 @@ package io.requery.processor;
 import io.requery.CascadeAction;
 import io.requery.Column;
 import io.requery.Convert;
+import io.requery.Embedded;
 import io.requery.ForeignKey;
 import io.requery.Generated;
 import io.requery.Index;
@@ -31,6 +32,7 @@ import io.requery.Naming;
 import io.requery.Nullable;
 import io.requery.OneToMany;
 import io.requery.OneToOne;
+import io.requery.OrderBy;
 import io.requery.PropertyNameStyle;
 import io.requery.ReadOnly;
 import io.requery.ReferentialAction;
@@ -43,11 +45,11 @@ import io.requery.meta.ListAttributeBuilder;
 import io.requery.meta.MapAttributeBuilder;
 import io.requery.meta.ResultAttributeBuilder;
 import io.requery.meta.SetAttributeBuilder;
+import io.requery.query.Order;
 
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.AnnotationMirror;
-import javax.lang.model.element.AnnotationValue;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
@@ -68,12 +70,13 @@ import javax.persistence.FetchType;
 import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
 import javax.persistence.JoinColumn;
-import javax.persistence.JoinTable;
 import java.lang.annotation.Annotation;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -89,32 +92,37 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
 
     private final EntityDescriptor entity;
     private String name;
-    private boolean isKey;
-    private boolean isUnique;
-    private boolean isNullable;
-    private boolean isVersion;
-    private boolean isGenerated;
-    private boolean isLazy;
+    private boolean isBoolean;
+    private boolean isEmbedded;
     private boolean isForeignKey;
+    private boolean isGenerated;
+    private boolean isIndexed;
+    private boolean isIterable;
+    private boolean isKey;
+    private boolean isLazy;
+    private boolean isMap;
+    private boolean isNullable;
+    private boolean isOptional;
     private boolean isReadOnly;
     private boolean isTransient;
-    private boolean isIterable;
-    private boolean isOptional;
-    private boolean isMap;
-    private boolean isIndexed;
+    private boolean isUnique;
+    private boolean isVersion;
     private Class<? extends AttributeBuilder> builderClass;
     private Integer length;
-    private String indexName;
+    private Set<String> indexNames;
     private Cardinality cardinality;
     private String converterType;
     private CascadeAction[] cascadeActions;
-    private ReferentialAction referentialAction;
+    private ReferentialAction deleteAction;
+    private ReferentialAction updateAction;
     private String referencedColumn;
     private String referencedType;
     private String referencedTable;
     private String mappedBy;
     private String defaultValue;
     private String collate;
+    private String orderByColumn;
+    private Order orderByDirection;
     private AssociativeEntityDescriptor associativeDescriptor;
 
     AttributeMember(Element element, EntityDescriptor entity) {
@@ -123,6 +131,7 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
             throw new IllegalStateException();
         }
         this.entity = entity;
+        this.indexNames = new LinkedHashSet<>();
     }
 
     @Override
@@ -131,21 +140,25 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
         ElementValidator validator = new ElementValidator(element(), processingEnvironment);
         validators.add(validator);
         validateField(validator);
-        checkMemberType(processingEnvironment, typeMirror(), validators);
         processFieldAccessAnnotations(validator);
         processBasicColumnAnnotations(validator);
         processAssociativeAnnotations(processingEnvironment, validator);
         processConverterAnnotation(validator);
+        checkMemberType(processingEnvironment, typeMirror(), validators);
         if (cardinality() != null && entity.isImmutable()) {
             validator.error("Immutable value type cannot contain relational references");
         }
+        checkReserved(name(), validator);
+        isEmbedded = annotationOf(Embedded.class).isPresent() ||
+            annotationOf(javax.persistence.Embedded.class).isPresent();
+        indexNames.forEach(name -> checkReserved(name, validator));
         return validators;
     }
 
     private void validateField(ElementValidator validator) {
         if (element().getKind().isField()) {
             Set<Modifier> modifiers = element().getModifiers();
-            if (modifiers.contains(Modifier.PRIVATE)) {
+            if (!entity.isUnimplementable() && modifiers.contains(Modifier.PRIVATE)) {
                 validator.error("Entity field cannot be private");
             }
             if (modifiers.contains(Modifier.STATIC)) {
@@ -161,19 +174,24 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
                                  Set<ElementValidator> validators) {
         builderClass = AttributeBuilder.class;
         Types types = processingEnvironment.getTypeUtils();
+        isBoolean = type.getKind() == TypeKind.BOOLEAN;
         if (type.getKind() == TypeKind.DECLARED) {
             TypeElement element = (TypeElement) types.asElement(type);
             if (element != null) {
-                isIterable = Mirrors.isInstance(types, element, Iterable.class);
+                // only set if the attribute is relational
+                if (cardinality != null) {
+                    isIterable = Mirrors.isInstance(types, element, Iterable.class);
+                }
                 isMap = Mirrors.isInstance(types, element, Map.class);
+                if (isMap && cardinality != null) {
+                    builderClass = MapAttributeBuilder.class;
+                }
                 isOptional = Mirrors.isInstance(types, element, Optional.class);
+                isBoolean = Mirrors.isInstance(types, element, Boolean.class);
             }
         }
         if (isIterable) {
             validators.add(validateCollectionType(processingEnvironment));
-        }
-        if (isMap) {
-            builderClass = MapAttributeBuilder.class;
         }
     }
 
@@ -224,14 +242,13 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
             isReadOnly = true;
 
             // check generation strategy
-            if (annotationOf(GeneratedValue.class).isPresent()) {
-                GeneratedValue generatedValue = annotationOf(GeneratedValue.class).get();
+            annotationOf(GeneratedValue.class).ifPresent(generatedValue -> {
                 if (generatedValue.strategy() != GenerationType.IDENTITY  &&
                     generatedValue.strategy() != GenerationType.AUTO) {
                     validator.warning("GeneratedValue.strategy() " +
                         generatedValue.strategy() + " not supported", generatedValue.getClass());
                 }
-            }
+            });
         }
         if (annotationOf(Lazy.class).isPresent()) {
             if (isKey) {
@@ -281,57 +298,60 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
         }
         if (foreignKey != null) {
             this.isForeignKey = true;
-            referentialAction = foreignKey.action();
+            deleteAction = foreignKey.delete();
+            updateAction = foreignKey.update();
             referencedColumn = foreignKey.referencedColumn();
         }
-        if (annotationOf(Index.class).isPresent()) {
+        annotationOf(Index.class).ifPresent(index -> {
             isIndexed = true;
-            indexName = annotationOf(Index.class).get().name();
-        }
+            Collections.addAll(indexNames, index.value());
+        });
 
         // JPA specific
-        if (annotationOf(Basic.class).isPresent()) {
-            Basic basic = annotationOf(Basic.class).get();
+        annotationOf(Basic.class).ifPresent(basic -> {
             isNullable = basic.optional();
             isLazy = basic.fetch() == FetchType.LAZY;
-        }
-        if (annotationOf(JoinColumn.class).isPresent()) {
-            JoinColumn joinColumn = annotationOf(JoinColumn.class).get();
+        });
+
+        annotationOf(javax.persistence.Index.class).ifPresent(index -> {
+            isIndexed = true;
+            Collections.addAll(indexNames, index.name());
+        });
+
+        annotationOf(JoinColumn.class).ifPresent(joinColumn -> {
             javax.persistence.ForeignKey joinForeignKey = joinColumn.foreignKey();
-            if (joinForeignKey != null) {
-                this.isForeignKey = true;
-                ConstraintMode constraintMode = joinForeignKey.value();
-                switch (constraintMode) {
-                    default:
-                    case PROVIDER_DEFAULT:
-                    case CONSTRAINT:
-                        referentialAction = ReferentialAction.CASCADE;
-                        break;
-                    case NO_CONSTRAINT:
-                        referentialAction = ReferentialAction.NO_ACTION;
-                        break;
-                }
+            this.isForeignKey = true;
+            ConstraintMode constraintMode = joinForeignKey.value();
+            switch (constraintMode) {
+                default:
+                case PROVIDER_DEFAULT:
+                case CONSTRAINT:
+                    deleteAction = ReferentialAction.CASCADE;
+                    updateAction = ReferentialAction.CASCADE;
+                    break;
+                case NO_CONSTRAINT:
+                    deleteAction = ReferentialAction.NO_ACTION;
+                    updateAction = ReferentialAction.NO_ACTION;
+                    break;
             }
             this.referencedTable = joinColumn.table();
             this.referencedColumn = joinColumn.referencedColumnName();
-        }
+        });
 
-        if (annotationOf(javax.persistence.Column.class).isPresent()) {
-            javax.persistence.Column persistenceColumn =
-                annotationOf(javax.persistence.Column.class).get();
+        annotationOf(javax.persistence.Column.class).ifPresent(persistenceColumn -> {
             name = "".equals(persistenceColumn.name()) ? null : persistenceColumn.name();
             isUnique = persistenceColumn.unique();
             isNullable = persistenceColumn.nullable();
             length = persistenceColumn.length();
             isReadOnly = !persistenceColumn.updatable();
-        }
+        });
 
-        if (annotationOf(Enumerated.class).isPresent()) {
-            EnumType enumType = annotationOf(Enumerated.class).get().value();
+        annotationOf(Enumerated.class).ifPresent(enumerated -> {
+            EnumType enumType = enumerated.value();
             if (enumType == EnumType.ORDINAL) {
                 converterType = EnumOrdinalConverter.class.getCanonicalName();
             }
-        }
+        });
     }
 
     private void processAssociativeAnnotations(ProcessingEnvironment processingEnvironment,
@@ -374,14 +394,18 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
             mappedBy = reflect.mappedBy();
             cascadeActions = reflect.cascade();
             checkIterable(validator);
+            processOrderBy();
         }
         if (manyToOne.isPresent()) {
             cardinality = Cardinality.MANY_TO_ONE;
             isForeignKey = true;
             ReflectiveAssociation reflect = new ReflectiveAssociation(manyToOne.get());
             cascadeActions = reflect.cascade();
-            if (referentialAction == null) {
-                referentialAction = ReferentialAction.CASCADE;
+            if (deleteAction == null) {
+                deleteAction = ReferentialAction.CASCADE;
+            }
+            if (updateAction == null) {
+                updateAction = ReferentialAction.CASCADE;
             }
         }
         if (manyToMany.isPresent()) {
@@ -404,9 +428,10 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
             }
             isReadOnly = true;
             checkIterable(validator);
+            processOrderBy();
         }
         if (isForeignKey()) {
-            if (referentialAction == ReferentialAction.SET_NULL && !isNullable()) {
+            if (deleteAction == ReferentialAction.SET_NULL && !isNullable()) {
                 validator.error("Cannot SET_NULL on optional attribute", ForeignKey.class);
             }
             // user mirror so generated type can be referenced
@@ -419,6 +444,13 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
             } else if (!typeMirror().getKind().isPrimitive()) {
                 referencedType = typeMirror().toString();
             }
+        }
+    }
+
+    private void checkReserved(String name, ElementValidator validator) {
+        if (Stream.of(ReservedKeyword.values())
+            .anyMatch(keyword -> keyword.toString().equalsIgnoreCase(name))) {
+            validator.warning("Column or index name " + name + " may need to be escaped");
         }
     }
 
@@ -450,6 +482,28 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
         if (converterType != null && cardinality != null) {
             validator.warning("Cannot specify converter on association field", Convert.class);
         }
+    }
+
+    private void processOrderBy() {
+        annotationOf(OrderBy.class).ifPresent(orderBy -> {
+            orderByColumn = orderBy.value();
+            orderByDirection = orderBy.order();
+        });
+        annotationOf(javax.persistence.OrderBy.class).ifPresent(orderBy -> {
+            String value = orderBy.value();
+            String[] parts = value.split(" ");
+            if (parts.length > 0) {
+                orderByColumn = parts[0].trim();
+                if (parts.length > 1) {
+                    String direction = parts[1].toUpperCase().trim();
+                    try {
+                        orderByDirection = Order.valueOf(direction);
+                    } catch (IllegalArgumentException e) {
+                        orderByDirection = Order.ASC;
+                    }
+                }
+            }
+        });
     }
 
     private void cannotCombine(ElementValidator validator,
@@ -492,7 +546,7 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
             String name = methodElement.getSimpleName().toString();
             name = Names.removeMethodPrefixes(name);
             if (Names.isAllUpper(name)) {
-                return name.toLowerCase();
+                return name.toLowerCase(Locale.ROOT);
             } else {
                 return Names.lowerCaseFirst(name);
             }
@@ -505,7 +559,11 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
     public String getterName() {
         if (element().getKind().isField()) {
             String name = annotationOf(Naming.class).map(Naming::getter).orElse("");
-            return getMethodName(name, useBeanStyleProperties() ? "get" : "");
+            String prefix = "";
+            if (useBeanStyleProperties()) {
+                prefix = isBoolean ? "is" : "get";
+            }
+            return getMethodName(name, prefix);
         } else {
             return element().getSimpleName().toString();
         }
@@ -524,7 +582,7 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
                 if (parameters.size() == 1) {
                     String property =
                         Names.removeMethodPrefixes(element.getSimpleName().toString());
-                    if (property.toLowerCase().equalsIgnoreCase(name())) {
+                    if (property.toLowerCase(Locale.ROOT).equalsIgnoreCase(name())) {
                         return element.getSimpleName().toString();
                     }
                 }
@@ -547,7 +605,7 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
 
     private boolean useBeanStyleProperties() {
         return entity.propertyNameStyle() == PropertyNameStyle.BEAN ||
-            entity.propertyNameStyle() == PropertyNameStyle.FLUENT_BEAN;
+               entity.propertyNameStyle() == PropertyNameStyle.FLUENT_BEAN;
     }
 
     @Override
@@ -560,69 +618,22 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
         if (element().getKind() == ElementKind.METHOD) {
             ExecutableElement executableElement = (ExecutableElement) element();
             AccessorNamePrefix prefix = AccessorNamePrefix.fromElement(executableElement);
-            String name = elementName;
             switch (prefix) {
                 case GET:
-                    name = elementName.replaceFirst("get", "");
+                    elementName = elementName.replaceFirst("get", "");
                     break;
                 case IS:
-                    name = elementName.replaceFirst("is", "");
+                    elementName = elementName.replaceFirst("is", "");
                     break;
             }
-            return Names.isAllUpper(name) ? name :
-                   Names.lowerCaseFirst(name);
+            return Names.isAllUpper(elementName) ? elementName : Names.lowerCaseFirst(elementName);
         }
         return elementName;
     }
 
     @Override
-    public String defaultValue() {
-        return defaultValue;
-    }
-
-    @Override
-    public boolean isKey() {
-        return isKey;
-    }
-
-    @Override
-    public boolean isTransient() {
-        return isTransient;
-    }
-
-    @Override
-    public boolean isNullable() {
-        return isNullable;
-    }
-
-    @Override
-    public boolean isUnique() {
-        return isUnique;
-    }
-
-    @Override
-    public boolean isGenerated() {
-        return isGenerated;
-    }
-
-    @Override
-    public boolean isLazy() {
-        return isLazy;
-    }
-
-    @Override
-    public boolean isForeignKey() {
-        return isForeignKey;
-    }
-
-    @Override
-    public boolean isReadOnly() {
-        return isReadOnly;
-    }
-
-    @Override
-    public boolean isVersion() {
-        return isVersion;
+    public String collate() {
+        return collate;
     }
 
     @Override
@@ -631,13 +642,103 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
     }
 
     @Override
+    public String converterName() {
+        return converterType;
+    }
+
+    @Override
+    public Set<String> indexNames() {
+        return indexNames;
+    }
+
+    @Override
+    public String defaultValue() {
+        return defaultValue;
+    }
+
+    @Override
+    public boolean isEmbedded() {
+        return isEmbedded;
+    }
+
+    @Override
+    public boolean isForeignKey() {
+        return isForeignKey;
+    }
+
+    @Override
+    public boolean isNullable() {
+        return isNullable;
+    }
+
+    @Override
+    public boolean isGenerated() {
+        return isGenerated;
+    }
+
+    @Override
+    public boolean isIndexed() {
+        return isIndexed;
+    }
+
+    @Override
+    public boolean isIterable() {
+        return isIterable;
+    }
+
+    @Override
+    public boolean isKey() {
+        return isKey;
+    }
+
+    @Override
+    public boolean isLazy() {
+        return isLazy;
+    }
+
+    @Override
+    public boolean isMap() {
+        return isMap;
+    }
+
+    @Override
+    public boolean isOptional() {
+        return isOptional;
+    }
+
+    @Override
+    public boolean isReadOnly() {
+        return isReadOnly;
+    }
+
+    @Override
+    public boolean isTransient() {
+        return isTransient;
+    }
+
+    @Override
+    public boolean isUnique() {
+        return isUnique;
+    }
+
+    @Override
+    public boolean isVersion() {
+        return isVersion;
+    }
+
+    @Override
     public Cardinality cardinality() {
         return cardinality;
     }
 
     @Override
-    public ReferentialAction referentialAction() {
-        return referentialAction;
+    public ReferentialAction deleteAction() {
+        return deleteAction;
+    }
+
+    @Override
+    public ReferentialAction updateAction() {
+        return updateAction;
     }
 
     @Override
@@ -670,38 +771,13 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
     }
 
     @Override
-    public String converterName() {
-        return converterType;
+    public String orderBy() {
+        return orderByColumn;
     }
 
     @Override
-    public boolean isIndexed() {
-        return isIndexed;
-    }
-
-    @Override
-    public String indexName() {
-        return indexName;
-    }
-
-    @Override
-    public String collate() {
-        return collate;
-    }
-
-    @Override
-    public boolean isMap() {
-        return isMap;
-    }
-
-    @Override
-    public boolean isIterable() {
-        return isIterable;
-    }
-
-    @Override
-    public boolean isOptional() {
-        return isOptional;
+    public Order orderByDirection() {
+        return orderByDirection;
     }
 
     @Override
@@ -710,8 +786,8 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
     }
 
     @Override
-    public AssociativeEntityDescriptor associativeEntity() {
-        return associativeDescriptor;
+    public Optional<AssociativeEntityDescriptor> associativeEntity() {
+        return Optional.ofNullable(associativeDescriptor);
     }
 
     @Override
@@ -719,7 +795,7 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
         return entity.typeName() + "." + name();
     }
 
-    static class ReflectiveAssociation {
+    private static class ReflectiveAssociation {
 
         private final Annotation annotation;
 
@@ -772,88 +848,4 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
             return actions.toArray(new CascadeAction[actions.size()]);
         }
     }
-
-    static class JunctionTableAssociation implements AssociativeEntityDescriptor {
-
-        private final JunctionTable table;
-        private final Set<AssociativeReference> columns;
-
-        JunctionTableAssociation(Elements elements, AttributeMember member, JunctionTable table) {
-            this.table = table;
-            this.columns = new LinkedHashSet<>();
-            for (Column column : table.columns()) {
-                ForeignKey key = column.foreignKey()[0];
-                String columnName = column.name();
-                ReferentialAction action = ReferentialAction.CASCADE;
-                TypeElement referenceType = null;
-
-                if (key != null) {
-                    action = key.action();
-                    Optional<? extends AnnotationValue> value =
-                        Mirrors.findAnnotationMirror(member.element(), JunctionTable.class)
-                            .flatMap(m -> Mirrors.findAnnotationValue(m, "columns"));
-
-                    if (value.isPresent()) {
-                        List mirrors = (List) value.get().getValue();
-                        for (Object m : mirrors) {
-                            Optional<? extends AnnotationValue> keyValue =
-                                Mirrors.findAnnotationValue((AnnotationMirror) m, "foreignKey");
-                            if (keyValue.isPresent()) {
-                                List children = (List) keyValue.get().getValue();
-                                Optional<? extends AnnotationValue> annotationValue =
-                                    Mirrors.findAnnotationValue(
-                                        (AnnotationMirror) children.get(0), "references");
-                                if (annotationValue.isPresent()) {
-                                    referenceType = elements.getTypeElement(
-                                        annotationValue.get().getValue().toString());
-                                }
-                            }
-                        }
-                    }
-                }
-                columns.add(new AssociativeReference(columnName, action, referenceType));
-            }
-        }
-
-        @Override
-        public String name() {
-            return table.name();
-        }
-
-        @Override
-        public Set<AssociativeReference> columns() {
-            return columns;
-        }
-    }
-
-    static class JoinTableAssociation implements AssociativeEntityDescriptor {
-
-        private final JoinTable table;
-        private final Set<AssociativeReference> columns;
-
-        JoinTableAssociation(JoinTable table) {
-            this.table = table;
-            this.columns = new LinkedHashSet<>();
-            for (JoinColumn column : table.joinColumns()) {
-                String columnName = column.name();
-                ReferentialAction action = ReferentialAction.CASCADE;
-                columns.add(new AssociativeReference(columnName, action, null));
-            }
-            for (JoinColumn column : table.inverseJoinColumns()) {
-                String columnName = column.name();
-                ReferentialAction action = ReferentialAction.CASCADE;
-                columns.add(new AssociativeReference(columnName, action, null));
-            }
-        }
-
-        @Override
-        public String name() {
-            return table.name();
-        }
-
-        @Override
-        public Set<AssociativeReference> columns() {
-            return columns;
-        }
-    }
- }
+}

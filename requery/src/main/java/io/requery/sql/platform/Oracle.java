@@ -17,31 +17,82 @@
 package io.requery.sql.platform;
 
 import io.requery.meta.Attribute;
+import io.requery.query.Expression;
 import io.requery.sql.BaseType;
 import io.requery.sql.GeneratedColumnDefinition;
 import io.requery.sql.IdentityColumnDefinition;
 import io.requery.sql.Mapping;
 import io.requery.sql.QueryBuilder;
+import io.requery.sql.gen.Generator;
+import io.requery.sql.gen.UpsertMergeGenerator;
+import io.requery.sql.gen.Output;
 import io.requery.sql.type.PrimitiveBooleanType;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
+import java.util.Map;
 
-import static io.requery.sql.Keyword.ALWAYS;
-import static io.requery.sql.Keyword.AS;
-import static io.requery.sql.Keyword.BY;
-import static io.requery.sql.Keyword.GENERATED;
-import static io.requery.sql.Keyword.IDENTITY;
-import static io.requery.sql.Keyword.INCREMENT;
-import static io.requery.sql.Keyword.START;
-import static io.requery.sql.Keyword.WITH;
+import static io.requery.sql.Keyword.*;
 
 /**
- * platform configuration for Oracle 12c and later PL/SQL.
+ * Oracle 12c and later PL/SQL.
  */
 public class Oracle extends Generic {
+
+    private final OracleIdentityColumnDefinition generatedColumn;
+    private final UpsertMergeGenerator upsertMergeWriter;
+
+    public Oracle() {
+        generatedColumn = new OracleIdentityColumnDefinition();
+        upsertMergeWriter = new UpsertMergeDual();
+    }
+
+    @Override
+    public void addMappings(Mapping mapping) {
+        super.addMappings(mapping);
+        mapping.replaceType(Types.BINARY, new RawType(Types.BINARY));
+        mapping.replaceType(Types.VARBINARY, new RawType(Types.VARBINARY));
+        mapping.replaceType(Types.BOOLEAN, new NumericBooleanType());
+    }
+
+    @Override
+    public boolean supportsIfExists() {
+        return false;
+    }
+
+    @Override
+    public GeneratedColumnDefinition generatedColumnDefinition() {
+        return generatedColumn;
+    }
+
+    @Override
+    public Generator<Map<Expression<?>, Object>> upsertGenerator() {
+        return upsertMergeWriter;
+    }
+
+    private static class UpsertMergeDual extends UpsertMergeGenerator {
+        @Override
+        protected void appendUsing(final Output context,
+                                   final Map<Expression<?>, Object> values) {
+            QueryBuilder qb = context.builder();
+            qb.openParenthesis()
+                .keyword(SELECT)
+                .commaSeparated(values.keySet(), new QueryBuilder.Appender<Expression<?>>() {
+                    @Override
+                    public void append(QueryBuilder qb, Expression expression) {
+                        qb.append("? ");
+                        context.parameters().add(expression, values.get(expression));
+                        qb.append(expression.getName());
+                    }
+                }).space()
+                .keyword(FROM)
+                .append("DUAL ")
+                .closeParenthesis()
+                .append(" " + alias + " ");
+        }
+    }
 
     // binary type
     private static class RawType extends BaseType<byte[]> {
@@ -52,11 +103,11 @@ public class Oracle extends Generic {
 
         @Override
         public boolean hasLength() {
-            return sqlType() == Types.VARBINARY;
+            return getSqlType() == Types.VARBINARY;
         }
 
         @Override
-        public String identifier() {
+        public String getIdentifier() {
             return "raw";
         }
 
@@ -84,12 +135,12 @@ public class Oracle extends Generic {
         }
 
         @Override
-        public Integer defaultLength() {
+        public Integer getDefaultLength() {
             return 1;
         }
 
         @Override
-        public String identifier() {
+        public String getIdentifier() {
             return "number";
         }
 
@@ -123,35 +174,12 @@ public class Oracle extends Generic {
             int increment = 1;
             qb.keyword(GENERATED, ALWAYS, AS, IDENTITY);
             qb.openParenthesis()
-                    .keyword(START, WITH).value(start)
-                    //.comma() just off the standard...
-                    .keyword(INCREMENT, BY).value(increment)
-                    .closeParenthesis()
-                    .space();
+                .keyword(START, WITH).value(start)
+                //.comma() just off the standard...
+                .keyword(INCREMENT, BY).value(increment)
+                .closeParenthesis()
+                .space();
         }
     }
 
-    private final OracleIdentityColumnDefinition generatedColumn;
-
-    public Oracle() {
-        generatedColumn = new OracleIdentityColumnDefinition();
-    }
-
-    @Override
-    public void addMappings(Mapping mapping) {
-        super.addMappings(mapping);
-        mapping.replaceType(Types.BINARY, new RawType(Types.BINARY));
-        mapping.replaceType(Types.VARBINARY, new RawType(Types.VARBINARY));
-        mapping.replaceType(Types.BOOLEAN, new NumericBooleanType());
-    }
-
-    @Override
-    public boolean supportsIfExists() {
-        return false;
-    }
-
-    @Override
-    public GeneratedColumnDefinition generatedColumnDefinition() {
-        return generatedColumn;
-    }
 }

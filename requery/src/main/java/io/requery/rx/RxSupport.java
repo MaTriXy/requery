@@ -17,20 +17,21 @@
 package io.requery.rx;
 
 import io.requery.BlockingEntityStore;
+import io.requery.TransactionListenable;
+import io.requery.meta.Attribute;
 import io.requery.meta.Type;
 import io.requery.query.BaseResult;
 import io.requery.query.Result;
 import io.requery.query.Scalar;
 import io.requery.query.element.QueryElement;
-import io.requery.util.CloseableIterator;
-import io.requery.util.function.Supplier;
+import io.requery.query.element.QueryWrapper;
 import rx.Observable;
 import rx.Scheduler;
 import rx.Single;
-import rx.functions.Action0;
 import rx.functions.Func1;
 
-import java.util.Iterator;
+import java.util.Collections;
+import java.util.Set;
 
 /**
  * Support utility class for use with RxJava
@@ -45,65 +46,66 @@ public final class RxSupport {
     }
 
     public static <S> SingleEntityStore<S> toReactiveStore(BlockingEntityStore<S> store) {
-        return new SingleEntityStoreFromBlocking<>(store);
+        return toReactiveStore(store, null);
+    }
+
+    public static <S> SingleEntityStore<S> toReactiveStore(BlockingEntityStore<S> store,
+                                                           Scheduler subscribeOn) {
+        return new SingleEntityStoreFromBlocking<>(store, subscribeOn);
     }
 
     public static <T> Observable<Result<T>> toResultObservable(final Result<T> result) {
-        if (!(result instanceof ObservableResult)) {
+        if (!(result instanceof TransactionListenable)) {
             throw new UnsupportedOperationException();
         }
-        ObservableResult observableResult = (ObservableResult) result;
-        final QueryElement element = observableResult.unwrapQuery();
+        TransactionListenable listenable = (TransactionListenable) result;
+        final QueryElement<?> element = ((QueryWrapper) result).unwrapQuery();
         // ensure the transaction listener is added in the target data store
-        observableResult.addTransactionListener(typeChanges);
-        return typeChanges.commitSubject().filter(new Func1<Type<?>, Boolean>() {
-            @Override
-            public Boolean call(Type<?> type) {
-                return element.entityTypes().contains(type);
-            }
-        }).map(new Func1<Type<?>, Result<T>>() {
-            @Override
-            public Result<T> call(Type<?> type) {
-                return result;
-            }
-        }).startWith(result);
+        listenable.addTransactionListener(typeChanges);
+        return typeChanges.commitSubject()
+            .filter(new Func1<Set<Type<?>>, Boolean>() {
+                @Override
+                public Boolean call(Set<Type<?>> types) {
+                    return !Collections.disjoint(element.entityTypes(), types) ||
+                        referencesType(element.entityTypes(), types);
+                }
+            }).map(new Func1<Set<Type<?>>, Result<T>>() {
+                @Override
+                public Result<T> call(Set<Type<?>> types) {
+                    return result;
+                }
+            }).startWith(result);
     }
 
-    private static <E> Observable<E> toObservable(final CloseableIterator<E> iterator) {
-        return Observable.from(new Iterable<E>() {
-            // use single iterator
-            @Override
-            public Iterator<E> iterator() {
-                return iterator;
+    public static boolean referencesType(Set<Type<?>> source, Set<Type<?>> changed) {
+        for (Type<?> type : source) {
+            for (Attribute<?, ?> attribute : type.getAttributes()) {
+                // find if any referencing types that maybe affected by changes to the type
+                if (attribute.isAssociation()) {
+                    Attribute referenced = null;
+                    if (attribute.getReferencedAttribute() != null) {
+                        referenced = attribute.getReferencedAttribute().get();
+                    }
+                    if (attribute.getMappedAttribute() != null) {
+                        referenced = attribute.getMappedAttribute().get();
+                    }
+                    if (referenced != null) {
+                        Type<?> declared = referenced.getDeclaringType();
+                        if (changed.contains(declared)) {
+                            return true;
+                        }
+                    }
+                }
             }
-        }).doOnTerminate(new Action0() {
-            @Override
-            public void call() {
-                iterator.close();
-            }
-        });
-    }
-
-    public static <E> Observable<E> toObservable(BaseResult<E> result, Integer limit) {
-        // if a limit on the query is set then just create a plain observable via iterator.
-        // Otherwise create a Observable with a custom subscriber that can modify the limit
-        if (limit == null) {
-            return Observable.create(new OnSubscribeFromQuery<>(result));
-        } else {
-            CloseableIterator<E> iterator = result.iterator();
-            return toObservable(iterator);
         }
+        return false;
+    }
+
+    public static <E> Observable<E> toObservable(final BaseResult<E> result) {
+        return Observable.create(new OnSubscribeFromQuery<>(result));
     }
 
     public static <E> Single<E> toSingle(final Scalar<E> scalar) {
-        return Single.create(new SingleOnSubscribeFromSupplier<>(scalar.toSupplier()));
-    }
-
-    static <E> Single<E> toSingle(Supplier<E> supplier, Scheduler subscribeOn) {
-        Single<E> single = Single.create(new SingleOnSubscribeFromSupplier<>(supplier));
-        if (subscribeOn != null) {
-            return single.subscribeOn(subscribeOn);
-        }
-        return single;
+        return Single.fromCallable(scalar);
     }
 }

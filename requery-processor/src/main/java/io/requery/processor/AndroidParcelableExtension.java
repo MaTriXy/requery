@@ -51,7 +51,8 @@ class AndroidParcelableExtension implements TypeGenerationExtension {
     public void generate(EntityDescriptor entity, TypeSpec.Builder builder) {
         // if not parcelable or the class implements itself don't implement it
         TypeElement typeElement = entity.element();
-        if (!Mirrors.isInstance(types, typeElement, PACKAGE_ANDROID_OS + ".Parcelable") ||
+        if (entity.isImmutable() ||
+            !Mirrors.isInstance(types, typeElement, PACKAGE_ANDROID_OS + ".Parcelable") ||
             Mirrors.overridesMethod(types, typeElement, "writeToParcel")) {
             return;
         }
@@ -98,6 +99,6 @@ class AndroidParcelableExtension implements TypeGenerationExtension {
                 FieldSpec.builder(parcelerType, "PARCELER",
                     Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL)
                     .initializer("new $T($L)", parcelerType,
-                            entity.staticTypeName()).build());
+                        EntityGenerator.TYPE_NAME).build());
     }
 }

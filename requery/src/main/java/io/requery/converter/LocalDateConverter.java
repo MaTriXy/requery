@@ -20,7 +20,6 @@ import io.requery.Converter;
 
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.ZoneId;
 
 /**
@@ -29,17 +28,17 @@ import java.time.ZoneId;
 public class LocalDateConverter implements Converter<LocalDate, java.sql.Date> {
 
     @Override
-    public Class<LocalDate> mappedType() {
+    public Class<LocalDate> getMappedType() {
         return LocalDate.class;
     }
 
     @Override
-    public Class<java.sql.Date> persistedType() {
+    public Class<java.sql.Date> getPersistedType() {
         return java.sql.Date.class;
     }
 
     @Override
-    public Integer persistedSize() {
+    public Integer getPersistedSize() {
         return null;
     }
 
@@ -57,7 +56,6 @@ public class LocalDateConverter implements Converter<LocalDate, java.sql.Date> {
         if (value == null) {
             return null;
         }
-        Instant instant = Instant.ofEpochMilli(value.getTime());
-        return LocalDateTime.ofInstant(instant, ZoneId.systemDefault()).toLocalDate();
+        return value.toLocalDate();
     }
 }

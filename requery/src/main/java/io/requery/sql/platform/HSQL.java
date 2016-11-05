@@ -16,23 +16,21 @@
 
 package io.requery.sql.platform;
 
-import io.requery.sql.LimitDefinition;
-import io.requery.sql.LimitOffsetDefinition;
+import io.requery.query.element.LimitedElement;
+import io.requery.sql.gen.LimitGenerator;
+import io.requery.sql.gen.Generator;
 
 /**
  * platform configuration for HSQLDB.
  */
 public class HSQL extends Generic {
 
-    private final LimitDefinition limitDefinition;
-
     public HSQL() {
-        limitDefinition = new LimitOffsetDefinition();
     }
 
     @Override
-    public LimitDefinition limitDefinition() {
-        return limitDefinition;
+    public Generator<LimitedElement> limitGenerator() {
+        return new LimitGenerator();
     }
 
     @Override

@@ -1,0 +1,48 @@
+buildscript {
+    repositories {
+        jcenter()
+    }
+}
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+
+kapt {
+    generateStubs = true
+}
+
+android {
+    compileSdkVersion 24
+    buildToolsVersion "$android_buildtools_version"
+
+    defaultConfig {
+        applicationId "io.requery.android.example.kotlinapp"
+        minSdkVersion 15
+        targetSdkVersion 24
+        versionCode 1
+        versionName "1.0"
+    }
+    buildTypes {
+        release {
+            minifyEnabled true
+            proguardFiles 'proguard-rules.pro'
+        }
+    }
+    lintOptions {
+        abortOnError false
+    }
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+    }
+}
+
+dependencies {
+    compile 'com.android.support:appcompat-v7:24.2.0'
+    compile 'com.android.support:recyclerview-v7:24.2.0'
+    compile "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+    compile "io.reactivex:rxjava:$rxjava_version"
+    compile 'io.reactivex:rxandroid:1.2.1'
+    compile 'io.requery:requery:1.0.1'
+    compile 'io.requery:requery-android:1.0.1'
+    compile 'io.requery:requery-kotlin:1.0.1'
+    kapt project(':requery-processor')
+}

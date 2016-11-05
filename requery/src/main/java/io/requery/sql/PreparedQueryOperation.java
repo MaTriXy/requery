@@ -17,9 +17,9 @@
 package io.requery.sql;
 
 import io.requery.meta.Attribute;
-import io.requery.proxy.EntityProxy;
+import io.requery.meta.EntityModel;
+import io.requery.meta.Type;
 import io.requery.query.Expression;
-import io.requery.util.function.Function;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -34,19 +34,21 @@ import java.sql.Statement;
  */
 abstract class PreparedQueryOperation {
 
-    protected final RuntimeConfiguration configuration;
-    protected final GeneratedResultReader generatedResultReader;
+    final RuntimeConfiguration configuration;
+    private final EntityModel model;
+    private final GeneratedResultReader generatedResultReader;
 
-    protected PreparedQueryOperation(RuntimeConfiguration configuration,
-                                     GeneratedResultReader generatedResultReader) {
+    PreparedQueryOperation(RuntimeConfiguration configuration,
+                           GeneratedResultReader generatedResultReader) {
         this.configuration = configuration;
         this.generatedResultReader = generatedResultReader;
+        this.model = configuration.getModel();
     }
 
-    protected PreparedStatement prepare(String sql, Connection connection) throws SQLException {
+    PreparedStatement prepare(String sql, Connection connection) throws SQLException {
         PreparedStatement statement;
         if (generatedResultReader != null) {
-            if (configuration.platform().supportsGeneratedColumnsInPrepareStatement()) {
+            if (configuration.getPlatform().supportsGeneratedColumnsInPrepareStatement()) {
                 String[] generatedColumns = generatedResultReader.generatedColumns();
                 statement = connection.prepareStatement(sql, generatedColumns);
             } else {
@@ -58,7 +60,7 @@ abstract class PreparedQueryOperation {
         return statement;
     }
 
-    protected void mapParameters(PreparedStatement statement, BoundParameters parameters)
+    void mapParameters(PreparedStatement statement, BoundParameters parameters)
         throws SQLException {
 
         for (int i = 0; i < parameters.count(); i++) {
@@ -68,20 +70,26 @@ abstract class PreparedQueryOperation {
                 Attribute attribute = (Attribute) expression;
                 if (attribute.isAssociation()) {
                     // get the referenced value
-                    if (value != null) {
-                        Attribute<Object, Object> referenced =
-                            Attributes.get(attribute.referencedAttribute());
-                        Function<Object, EntityProxy<Object>> proxyProvider =
-                            referenced.declaringType().proxyProvider();
-                        value = proxyProvider.apply(value).get(referenced);
+                    value = Attributes.replaceKeyReference(value, attribute);
+                }
+            }
+            Class<?> type = value == null ? null: value.getClass();
+            if (type != null) {
+                // allows entity arguments with single keys to be remapped to their keys
+                if (model.containsTypeOf(type)) {
+                    Type<Object> entityType = model.typeOf(type);
+                    Attribute<Object, ?> keyAttribute = entityType.getSingleKeyAttribute();
+                    if (keyAttribute != null) {
+                        value = keyAttribute.getProperty().get(value);
+                        expression = (Expression) keyAttribute;
                     }
                 }
             }
-            configuration.mapping().write(expression, statement, i + 1, value);
+            configuration.getMapping().write(expression, statement, i + 1, value);
         }
     }
 
-    protected void readGeneratedKeys(int index, Statement statement) throws SQLException {
+    void readGeneratedKeys(int index, Statement statement) throws SQLException {
         if (generatedResultReader != null) {
             try (ResultSet results = statement.getGeneratedKeys()) {
                 generatedResultReader.read(index, results);

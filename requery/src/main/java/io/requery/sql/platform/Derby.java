@@ -43,13 +43,13 @@ public class Derby extends Generic {
         }
 
         @Override
-        public Integer defaultLength() {
+        public Integer getDefaultLength() {
             return 32;
         }
 
         @Override
-        public Object identifier() {
-            switch (sqlType()) {
+        public Object getIdentifier() {
+            switch (getSqlType()) {
                 case Types.BINARY:
                     return "char";
                 case Types.VARBINARY:
@@ -60,7 +60,7 @@ public class Derby extends Generic {
         }
 
         @Override
-        public String identifierSuffix() {
+        public String getIdentifierSuffix() {
             return "for bit data";
         }
 
@@ -87,5 +87,10 @@ public class Derby extends Generic {
     @Override
     public boolean supportsGeneratedColumnsInPrepareStatement() {
         return false;
+    }
+
+    @Override
+    public boolean supportsUpsert() {
+        return true;
     }
 }

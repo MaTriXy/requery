@@ -70,17 +70,23 @@ public class QueryElement<E> implements Selectable<E>,
     Offset<E>,
     Aliasable<Return<E>>,
     Expression<QueryElement>,
-    QueryWrapper<E> {
+    QueryWrapper<E>,
+    SelectionElement,
+    LimitedElement,
+    OrderByElement,
+    GroupByElement,
+    SetOperationElement,
+    WhereElement {
 
     private final EntityModel model;
     private final QueryOperation<E> operator;
     private final QueryType queryType;
     private String aliasName;
     private boolean selectDistinct;
-    private Set<WhereElement<E>> where;
+    private Set<WhereConditionElement<E>> where;
     private Set<JoinOnElement<E>> joins;
     private Set<Expression<?>> groupBy;
-    private Set<HavingElement<E>> having;
+    private Set<HavingConditionElement<E>> having;
     private Set<Expression<?>> orderBy;
     private Map<Expression<?>, Object> updates;
     private Set<Expression<?>> from;
@@ -109,10 +115,12 @@ public class QueryElement<E> implements Selectable<E>,
         return queryType;
     }
 
-    public Set<? extends Expression<?>> selection() {
+    @Override
+    public Set<? extends Expression<?>> getSelection() {
         return selection;
     }
 
+    @Override
     public boolean isDistinct() {
         return selectDistinct;
     }
@@ -121,11 +129,14 @@ public class QueryElement<E> implements Selectable<E>,
         return updates == null ? Collections.<Expression<?>, Object>emptyMap() : updates;
     }
 
-    public Set<WhereElement<E>> whereElements() {
-        return where;
+    @SuppressWarnings("unchecked")
+    @Override
+    public Set<WhereConditionElement<?>> getWhereElements() {
+        return (Set)where;
     }
 
-    public ExistsElement<?> whereExistsElement() {
+    @Override
+    public ExistsElement<?> getWhereExistsElement() {
         return whereSubQuery;
     }
 
@@ -133,30 +144,38 @@ public class QueryElement<E> implements Selectable<E>,
         return joins;
     }
 
-    public SetOperator setOperator() {
+    @Override
+    public SetOperator getOperator() {
         return setOperator;
     }
 
-    public Set<Expression<?>> orderByExpressions() {
+    @Override
+    public Set<Expression<?>> getOrderByExpressions() {
         return orderBy;
     }
 
-    public Set<Expression<?>> groupByExpressions() {
+    @Override
+    public Set<Expression<?>> getGroupByExpressions() {
         return groupBy;
     }
 
-    public Set<HavingElement<E>> havingElements() {
-        return having;
+    @SuppressWarnings("unchecked")
+    @Override
+    public Set<HavingConditionElement<?>> getHavingElements() {
+        return (Set)having;
     }
 
-    public QueryElement<E> innerSetQuery() {
+    @Override
+    public QueryElement<E> getInnerSetQuery() {
         return setQuery;
     }
 
+    @Override
     public Integer getLimit() {
         return limit;
     }
 
+    @Override
     public Integer getOffset() {
         return offset;
     }
@@ -168,19 +187,32 @@ public class QueryElement<E> implements Selectable<E>,
     public Set<Expression<?>> fromExpressions() {
         if (from == null) {
             types = new LinkedHashSet<>();
-            for (Expression<?> expression : selection()) {
+            Set<? extends Expression<?>> expressions;
+            switch (queryType) {
+                case SELECT:
+                    expressions = getSelection();
+                    break;
+                case INSERT:
+                case UPDATE:
+                case UPSERT:
+                    expressions = updates.keySet();
+                    break;
+                default:
+                    expressions = Collections.emptySet();
+            }
+            for (Expression<?> expression : expressions) {
                 if (expression instanceof AliasedExpression) {
-                    expression = ((AliasedExpression) expression).innerExpression();
+                    expression = ((AliasedExpression) expression).getInnerExpression();
                 }
                 if (expression instanceof Attribute) {
-                    Type type = ((Attribute) expression).declaringType();
+                    Type type = ((Attribute) expression).getDeclaringType();
                     types.add(type);
                 } else if (expression instanceof Function) {
                     Function function = (Function) expression;
                     for (Object arg : function.arguments()) {
                         Type type = null;
                         if (arg instanceof Attribute) {
-                            type = ((Attribute) arg).declaringType();
+                            type = ((Attribute) arg).getDeclaringType();
                             types.add(type);
                         } else if (arg instanceof Class) {
                             type = model.typeOf((Class) arg);
@@ -202,17 +234,17 @@ public class QueryElement<E> implements Selectable<E>,
     }
 
     @Override
-    public String name() {
+    public String getName() {
         return "";
     }
 
     @Override
-    public Class<QueryElement> classType() {
+    public Class<QueryElement> getClassType() {
         return QueryElement.class;
     }
 
     @Override
-    public ExpressionType type() {
+    public ExpressionType getExpressionType() {
         return ExpressionType.QUERY;
     }
 
@@ -223,7 +255,7 @@ public class QueryElement<E> implements Selectable<E>,
     }
 
     @Override
-    public String aliasName() {
+    public String getAlias() {
         return aliasName;
     }
 
@@ -282,7 +314,7 @@ public class QueryElement<E> implements Selectable<E>,
 
     @Override
     public E get() {
-        return operator.execute(parent == null ? this : parent);
+        return operator.evaluate(parent == null ? this : parent);
     }
 
     @Override
@@ -303,13 +335,23 @@ public class QueryElement<E> implements Selectable<E>,
         return this;
     }
 
-    private <J> JoinOn<E> createJoin(Class<J> type, JoinType joinType) {
-        String table = model.typeOf(type).name();
-        JoinOnElement<E> join = new JoinOnElement<>(this, table, joinType);
+    private void addJoinElement(JoinOnElement<E> element) {
         if (joins == null) {
             joins = new LinkedHashSet<>();
         }
-        joins.add(join);
+        joins.add(element);
+    }
+
+    private <J> JoinOn<E> createJoin(Class<J> type, JoinType joinType) {
+        String table = model.typeOf(type).getName();
+        JoinOnElement<E> join = new JoinOnElement<>(this, table, joinType);
+        addJoinElement(join);
+        return join;
+    }
+
+    private <J> JoinOn<E> createJoin(Return<J> query, JoinType joinType) {
+        JoinOnElement<E> join = new JoinOnElement<>(this, query, joinType);
+        addJoinElement(join);
         return join;
     }
 
@@ -326,6 +368,21 @@ public class QueryElement<E> implements Selectable<E>,
     @Override
     public <J> JoinOn<E> rightJoin(Class<J> type) {
         return createJoin(type, JoinType.RIGHT);
+    }
+
+    @Override
+    public <J> JoinOn<E> join(Return<J> query) {
+        return createJoin(query, JoinType.INNER);
+    }
+
+    @Override
+    public <J> JoinOn<E> leftJoin(Return<J> query) {
+        return createJoin(query, JoinType.LEFT);
+    }
+
+    @Override
+    public <J> JoinOn<E> rightJoin(Return<J> query) {
+        return createJoin(query, JoinType.RIGHT);
     }
 
     @Override
@@ -360,7 +417,7 @@ public class QueryElement<E> implements Selectable<E>,
             where = new LinkedHashSet<>();
         }
         LogicalOperator operator = where.size() > 0 ? LogicalOperator.AND : null;
-        WhereElement<E> element = new WhereElement<>(this, where, condition, operator);
+        WhereConditionElement<E> element = new WhereConditionElement<>(this, where, condition, operator);
         where.add(element);
         return element;
     }
@@ -370,7 +427,7 @@ public class QueryElement<E> implements Selectable<E>,
         if (having == null) {
             having = new LinkedHashSet<>();
         }
-        HavingElement<E> element = new HavingElement<>(this, having, condition, null);
+        HavingConditionElement<E> element = new HavingConditionElement<>(this, having, condition, null);
         having.add(element);
         return element;
     }

@@ -16,6 +16,13 @@
 
 package io.requery.sql;
 
+import io.requery.query.Expression;
+import io.requery.query.element.LimitedElement;
+import io.requery.query.element.OrderByElement;
+import io.requery.sql.gen.Generator;
+
+import java.util.Map;
+
 /**
  * Defines platform/vendor specific SQL features.
  */
@@ -62,14 +69,30 @@ public interface Platform {
     boolean supportsGeneratedKeysInBatchUpdate();
 
     /**
+     * @return true if the platform supports an upsert (insert or update) operation either via
+     * merge or an alternate syntax that is defined in {@link #upsertGenerator()}
+     */
+    boolean supportsUpsert();
+
+    /**
      * @return the type of generated key type DDL this database supports.
      */
     GeneratedColumnDefinition generatedColumnDefinition();
 
     /**
-     * @return the type of limit support this database supports.
+     * @return the limit generator for this database
      */
-    LimitDefinition limitDefinition();
+    Generator<LimitedElement> limitGenerator();
+
+    /**
+     * @return the upsert generator for this database
+     */
+    Generator<Map<Expression<?>, Object>> upsertGenerator();
+
+    /**
+     * @return the order by generator for this database
+     */
+    Generator<OrderByElement> orderByGenerator();
 
     /**
      * @return the type of version column this database supports.

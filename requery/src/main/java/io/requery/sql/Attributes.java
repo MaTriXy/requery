@@ -27,23 +27,39 @@ import java.util.LinkedHashSet;
 @SuppressWarnings("unchecked")
 final class Attributes {
 
-    static <E,V> QueryAttribute<E, V> query(Attribute attribute) {
+    static <E, V> QueryAttribute<E, V> query(Attribute attribute) {
+        if (attribute instanceof Supplier) {
+            return get((Supplier) attribute);
+        }
         return (QueryAttribute<E, V>) attribute;
     }
 
-    static <E,V> QueryAttribute<E, V> get(Supplier supplier) {
-        return (QueryAttribute<E, V>) supplier.get();
+    static <E, V> QueryAttribute<E, V> get(Supplier supplier) {
+        return query((Attribute) supplier.get());
     }
 
-    static <E> Attribute<E, ?>[] attributesToArray(Collection<Attribute<E,?>> attributes,
-                                                   Predicate<Attribute<E, ?>> filter) {
+    static <E> Attribute<E, ?>[] newArray(int size) {
+        return new Attribute[size];
+    }
+
+    static <E> Attribute<E, ?>[] toArray(Collection<Attribute<E, ?>> attributes,
+                                         Predicate<Attribute<E, ?>> filter) {
         LinkedHashSet<Attribute> filtered = new LinkedHashSet<>();
         for (Attribute<E, ?> attribute : attributes) {
-            if (filter.test(attribute)) {
+            if (filter == null || filter.test(attribute)) {
                 filtered.add(attribute);
             }
         }
         Attribute<E, ?>[] array = new Attribute[filtered.size()];
         return filtered.toArray(array);
+    }
+
+    static Object replaceKeyReference(Object value, Attribute attribute) {
+        if (value != null) {
+            Attribute<Object, Object> referenced = get(attribute.getReferencedAttribute());
+            value = referenced.getDeclaringType()
+                    .getProxyProvider().apply(value).get(referenced, false);
+        }
+        return value;
     }
 }

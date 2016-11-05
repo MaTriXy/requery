@@ -21,6 +21,7 @@ import io.requery.PropertyNameStyle;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -32,7 +33,7 @@ import java.util.Optional;
 interface EntityDescriptor {
 
     /**
-     * @return {@link TypeElement} element being represented
+     * @return {@link TypeElement} element being represented as an entity for processing
      */
     TypeElement element();
 
@@ -40,6 +41,11 @@ interface EntityDescriptor {
      * @return map of elements to attributes
      */
     Map<Element, ? extends AttributeDescriptor> attributes();
+
+    /**
+     * @return true if this entity type requires additional types to be generated to compile.
+     */
+    boolean generatesAdditionalTypes();
 
     /**
      * @return map of elements to listener methods
@@ -50,11 +56,6 @@ interface EntityDescriptor {
      * @return {@link QualifiedName} qualified name of the class to be generated
      */
     QualifiedName typeName();
-
-    /**
-     * @return Name for the Type member in the generated entity
-     */
-    String staticTypeName();
 
     /**
      * @return Name of the model this entity belongs to
@@ -73,9 +74,14 @@ interface EntityDescriptor {
     String classFactoryName();
 
     /**
-     * @return table attributes used during table generataion
+     * @return table attributes used during table generation
      */
     String[] tableAttributes();
+
+    /**
+     * @return table unique indexes used during table generation
+     */
+    String[] tableUniqueIndexes();
 
     /**
      * @return {@link PropertyNameStyle} style of the accessors in the entity
@@ -86,6 +92,16 @@ interface EntityDescriptor {
      * @return true if the entity is cacheable
      */
     boolean isCacheable();
+
+    /**
+     * @return true if this an embedded entity type.
+     */
+    boolean isEmbedded();
+
+    /**
+     * @return true if the underlying type being represented is immutable, false otherwise
+     */
+    boolean isImmutable();
 
     /**
      * @return true if the entity is read only, differs from immutable in that the properties can
@@ -99,9 +115,11 @@ interface EntityDescriptor {
     boolean isStateless();
 
     /**
-     * @return true if the underlying type being represented is immutable, false otherwise
+     * @return true if the annotated type should not be extended/implemented by the generation step.
+     * Either the source class that is final (cannot be extended) or another limitation prevents it
+     * from being extended/implemented.
      */
-    boolean isImmutable();
+    boolean isUnimplementable();
 
     /**
      * @return {@link TypeElement} of the builder class that can build instances of the entity if
@@ -138,4 +156,9 @@ interface EntityDescriptor {
      * </code></pre>
      */
     Optional<ExecutableElement> factoryMethod();
+
+    /**
+     * @return the list of argument names for the {@link #factoryMethod()}
+     */
+    List<String> factoryArguments();
 }

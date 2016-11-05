@@ -16,11 +16,12 @@
 
 package io.requery.query;
 
-import io.requery.rx.ToObservable;
 import io.requery.util.CloseableIterable;
 import io.requery.util.CloseableIterator;
 import io.requery.util.function.Consumer;
+import io.requery.util.function.Supplier;
 
+import javax.annotation.CheckReturnValue;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -37,7 +38,7 @@ import java.util.stream.Stream;
  *
  * @param <E> type of element.
  */
-public interface Result<E> extends CloseableIterable<E>, AutoCloseable, ToObservable<E> {
+public interface Result<E> extends CloseableIterable<E>, AutoCloseable {
 
     /**
      * @return A {@link AutoCloseable} {@link java.util.Iterator} over the elements in this result.
@@ -54,6 +55,7 @@ public interface Result<E> extends CloseableIterable<E>, AutoCloseable, ToObserv
     /**
      * @return {@link Stream} instance over the result set. Java 8 only.
      */
+    @CheckReturnValue
     Stream<E> stream();
 
     /**
@@ -62,7 +64,7 @@ public interface Result<E> extends CloseableIterable<E>, AutoCloseable, ToObserv
      *
      * @return observable stream of the results of this query.
      */
-    @Override
+    @CheckReturnValue
     rx.Observable<E> toObservable();
 
     /**
@@ -73,7 +75,37 @@ public interface Result<E> extends CloseableIterable<E>, AutoCloseable, ToObserv
      * @return observable instance of this result that is triggered whenever changes that may
      * affect the query are made.
      */
+    @CheckReturnValue
     rx.Observable<Result<E>> toSelfObservable();
+
+    /**
+     * Converts the result stream to a {@link io.reactivex.Flowable}. When the flowable terminates
+     * this result instance will be closed.
+     *
+     * @return flowable stream of the results of this query.
+     */
+    @CheckReturnValue
+    io.reactivex.Flowable<E> flowable();
+
+    /**
+     * Converts the result stream to a {@link io.reactivex.Observable}. When the observable
+     * terminates this result instance will be closed.
+     *
+     * @return observable stream of the results of this query.
+     */
+    @CheckReturnValue
+    io.reactivex.Observable<E> observable();
+
+    /**
+     * Creates an {@link io.reactivex.Observable} that emits this result initially and then again
+     * whenever commits that may affect the query result are made from within the same
+     * {@link io.requery.EntityStore} from where this instance originated.
+     *
+     * @return {@link io.reactivex.Observable} instance of this result that is triggered whenever
+     * changes that may affect the query are made.
+     */
+    @CheckReturnValue
+    io.reactivex.Observable<Result<E>> observableResult();
 
     /**
      * Fill the given collection with all elements from this result set.
@@ -90,6 +122,7 @@ public interface Result<E> extends CloseableIterable<E>, AutoCloseable, ToObserv
      * @return first element of this result set.
      * @throws java.util.NoSuchElementException if there is no first element (empty result).
      */
+    @CheckReturnValue
     E first() throws NoSuchElementException;
 
     /**
@@ -98,13 +131,24 @@ public interface Result<E> extends CloseableIterable<E>, AutoCloseable, ToObserv
      * @param defaultElement default value for when there is no first element.
      * @return First element or defaultElement if there is none.
      */
+    @CheckReturnValue
     E firstOr(E defaultElement);
+
+    /**
+     * Gets the first element or a default value from a {@link Supplier}.
+     *
+     * @param supplier value supplier for when there is no first element.
+     * @return First element or the supplier value if there is none.
+     */
+    @CheckReturnValue
+    E firstOr(Supplier<E> supplier);
 
     /**
      * Gets the first element or a default null value.
      *
      * @return First element or null if there is none.
      */
+    @CheckReturnValue
     E firstOrNull();
 
     /**
@@ -120,6 +164,7 @@ public interface Result<E> extends CloseableIterable<E>, AutoCloseable, ToObserv
      *
      * @return a new unmodifiable list with the contents of the result.
      */
+    @CheckReturnValue
     List<E> toList();
 
     /**
@@ -129,6 +174,7 @@ public interface Result<E> extends CloseableIterable<E>, AutoCloseable, ToObserv
      * @param <K> type of key
      * @return map containing the results
      */
+    @CheckReturnValue
     <K> Map<K, E> toMap(Expression<K> key);
 
     /**
@@ -139,6 +185,6 @@ public interface Result<E> extends CloseableIterable<E>, AutoCloseable, ToObserv
      * @param <K> type of key
      * @return map containing the results.
      */
+    @CheckReturnValue
     <K> Map<K, E> toMap(Expression<K> key, Map<K, E> map);
-
 }
