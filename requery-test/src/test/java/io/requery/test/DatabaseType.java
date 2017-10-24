@@ -12,6 +12,7 @@ import org.apache.derby.jdbc.EmbeddedDataSource;
 import org.h2.jdbcx.JdbcDataSource;
 import org.hsqldb.jdbc.JDBCDataSource;
 import org.postgresql.ds.PGSimpleDataSource;
+import org.sqlite.SQLiteConfig;
 import org.sqlite.SQLiteDataSource;
 
 import javax.sql.CommonDataSource;
@@ -76,11 +77,12 @@ public enum DatabaseType {
         DataSource createDataSource() {
             SQLiteDataSource dataSource = new SQLiteDataSource();
             dataSource.setUrl("jdbc:sqlite:/tmp/test.sqlite");
-            try (Statement statement = dataSource.getConnection().createStatement()) {
-                statement.execute("PRAGMA foreign_keys = ON");
-            } catch (SQLException e) {
-                throw new RuntimeException(e);
-            }
+            SQLiteConfig config = new SQLiteConfig();
+            config.setDateClass("TEXT");
+            dataSource.setConfig(config);
+            // Turn on foreign keys support.
+            // NOTE: Do it after setConfig, or setConfig will overwrite this setting
+            dataSource.setEnforceForeinKeys(true);
             return dataSource;
         }
     },

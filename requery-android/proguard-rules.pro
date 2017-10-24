@@ -6,10 +6,12 @@
 -dontwarn javax.naming.**
 -dontwarn javax.transaction.**
 -dontwarn java.sql.**
+-dontwarn javax.sql.**
 -dontwarn android.support.**
 -dontwarn io.requery.cache.**
 -dontwarn io.requery.rx.**
 -dontwarn io.requery.reactivex.**
+-dontwarn io.requery.reactor.**
 -dontwarn io.requery.query.**
 -dontwarn io.requery.android.sqlcipher.**
 -dontwarn io.requery.android.sqlitex.**

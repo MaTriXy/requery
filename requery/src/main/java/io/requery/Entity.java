@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 requery.io
+ * Copyright 2017 requery.io
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -65,6 +65,12 @@ public @interface Entity {
     boolean cacheable() default true;
 
     /**
+     * @return true if the entity should be trivially copyable. In which case the annotation
+     * processor will generate a copy() method returning a shallow copy of the given object.
+     */
+    boolean copyable() default false;
+
+    /**
      * @return false if they class being annotated as entity is not extendable and the annotation
      * processor should not generate a type extending or implementing it but instead generate only
      * the attribute meta information. Defaults to true unless this annotation is placed on a class
@@ -102,4 +108,12 @@ public @interface Entity {
      * @return the name style of properties in the target entity.
      */
     PropertyNameStyle propertyNameStyle() default PropertyNameStyle.BEAN;
+
+    /**
+     * Defines the target visibility of properties in the target entity. Note this is not
+     * applicable to abstract or immutable classes.
+     *
+     * @return the visibility level of properties in the target entity
+     */
+    PropertyVisibility propertyVisibility() default PropertyVisibility.PRIVATE;
 }

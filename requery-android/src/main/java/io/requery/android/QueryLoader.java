@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 requery.io
+ * Copyright 2017 requery.io
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,12 @@ import android.support.v4.content.AsyncTaskLoader;
 import io.requery.EntityStore;
 import io.requery.query.Result;
 
+/**
+ * This class is deprecated, prefer using your own AsyncTaskLoader implementation or a framework
+ * such as RxJava.
+ * @param <E>
+ */
+@Deprecated
 public abstract class QueryLoader<E> extends AsyncTaskLoader<Result<E>> {
 
     private final EntityStore data;
@@ -70,7 +76,7 @@ public abstract class QueryLoader<E> extends AsyncTaskLoader<Result<E>> {
         if (isStarted()) {
             super.deliverResult(result);
         }
-        if (previous != null) {
+        if (previous != null && previous != data) {
             previous.close();
         }
     }

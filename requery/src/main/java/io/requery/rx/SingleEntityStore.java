@@ -16,28 +16,29 @@
 
 package io.requery.rx;
 
+import io.requery.BlockingEntityStore;
 import io.requery.EntityStore;
 import io.requery.meta.Attribute;
-import io.requery.query.Result;
-import rx.Observable;
+import io.requery.util.function.Function;
 import rx.Single;
 
 import javax.annotation.CheckReturnValue;
 import javax.annotation.ParametersAreNonnullByDefault;
-import java.util.Arrays;
-import java.util.List;
 
 /**
+ * Deprecated. RxJava 1.0 support will be removed in a future release, please migrate to RxJava 2.0.
+ *
  * Extends {@link EntityStore} where all return values are single {@link rx.Single} instances
  * representing the outcome of each operation. {@link rx.Observable} query results can be obtained
- * via {@link Result#toObservable()}.
+ * via {@link RxResult#toObservable()}.
  *
  * @param <T> entity base type. See {@link EntityStore}.
  *
  * @author Nikhil Purushe
  */
+@Deprecated
 @ParametersAreNonnullByDefault
-public abstract class SingleEntityStore<T> implements EntityStore<T, Single<?>> {
+public abstract class SingleEntityStore<T> implements EntityStore<T, Single<?>>, RxQueryable<T> {
 
     @Override
     @CheckReturnValue
@@ -53,8 +54,7 @@ public abstract class SingleEntityStore<T> implements EntityStore<T, Single<?>> 
 
     @Override
     @CheckReturnValue
-    public abstract <K, E extends T> Single<Iterable<K>> insert(Iterable<E> entities,
-                                                                Class<K> keyClass);
+    public abstract <K, E extends T> Single<Iterable<K>> insert(Iterable<E> entities, Class<K> keyClass);
 
     @Override
     @CheckReturnValue
@@ -86,8 +86,7 @@ public abstract class SingleEntityStore<T> implements EntityStore<T, Single<?>> 
 
     @Override
     @CheckReturnValue
-    public abstract <E extends T> Single<Iterable<E>> refresh(Iterable<E> entities,
-                                                              Attribute<?, ?>... attributes);
+    public abstract <E extends T> Single<Iterable<E>> refresh(Iterable<E> entities, Attribute<?, ?>... attributes);
 
     @Override
     @CheckReturnValue
@@ -106,10 +105,5 @@ public abstract class SingleEntityStore<T> implements EntityStore<T, Single<?>> 
     public abstract <E extends T, K> Single<E> findByKey(Class<E> type, K key);
 
     @CheckReturnValue
-    @SafeVarargs
-    public final <E> Observable<E> runInTransaction(Single<? extends E>... elements) {
-        return runInTransaction(Arrays.asList(elements));
-    }
-
-    abstract <E> Observable<E> runInTransaction(List<Single<? extends E>> elements);
+    public abstract <R> Single<R> runInTransaction(Function<BlockingEntityStore<T>, R> function);
 }

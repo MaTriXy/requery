@@ -10,6 +10,8 @@ import android.support.v7.widget.RecyclerView.ViewHolder
 import android.view.*
 import android.widget.ImageView
 import android.widget.TextView
+import io.reactivex.Observable
+import io.reactivex.schedulers.Schedulers
 import io.requery.Persistable
 import io.requery.android.QueryRecyclerAdapter
 import io.requery.android.example.app.model.Models
@@ -17,9 +19,7 @@ import io.requery.android.example.app.model.Person
 import io.requery.android.example.app.model.PersonEntity
 import io.requery.kotlin.lower
 import io.requery.query.Result
-import io.requery.sql.KotlinEntityDataStore
-import rx.Observable
-import rx.schedulers.Schedulers
+import io.requery.reactivex.KotlinReactiveEntityStore
 import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -30,7 +30,7 @@ import java.util.concurrent.Executors
  */
 class PeopleActivity : AppCompatActivity() {
 
-    private lateinit var data: KotlinEntityDataStore<Persistable>
+    private lateinit var data: KotlinReactiveEntityStore<Persistable>
     private lateinit var executor: ExecutorService
     private lateinit var adapter: PersonAdapter
 
@@ -46,8 +46,8 @@ class PeopleActivity : AppCompatActivity() {
         recyclerView.adapter = adapter
         recyclerView.layoutManager = LinearLayoutManager(this)
 
-        data.count(Person::class).get().toSingle().subscribe { integer ->
-            if (integer === 0) {
+        data.count(Person::class).get().single().subscribe { integer ->
+            if (integer == 0) {
                 Observable.fromCallable(CreatePeople(data))
                     .flatMap { o -> o }
                     .observeOn(Schedulers.computation())

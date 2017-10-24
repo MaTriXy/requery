@@ -43,7 +43,7 @@ abstract class EntityUpdateOperation extends UpdateOperation {
                 // doesn't use the query params, just maps to the parameterBinder callback
                 QueryBuilder qb = new QueryBuilder(configuration.getQueryBuilderOptions());
                 DefaultOutput output =
-                new DefaultOutput(configuration.getStatementGenerator(), query, qb, null, false);
+                new DefaultOutput(configuration, query, qb, null, false);
                 String sql = output.toSql();
                 int result;
                 try (Connection connection = configuration.getConnection()) {
@@ -52,7 +52,7 @@ abstract class EntityUpdateOperation extends UpdateOperation {
                         bindParameters(statement);
                         listener.beforeExecuteUpdate(statement, sql, null);
                         result = statement.executeUpdate();
-                        listener.afterExecuteUpdate(statement);
+                        listener.afterExecuteUpdate(statement, result);
                         readGeneratedKeys(0, statement);
                     }
                 } catch (SQLException e) {

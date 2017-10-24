@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 requery.io
+ * Copyright 2017 requery.io
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,13 @@
 
 package io.requery.test;
 
+import junit.framework.Assert;
+
 import io.requery.Persistable;
 import io.requery.PersistenceException;
+import io.requery.RollbackException;
 import io.requery.Transaction;
+import io.requery.TransactionIsolation;
 import io.requery.meta.Attribute;
 import io.requery.proxy.CompositeKey;
 import io.requery.proxy.EntityProxy;
@@ -30,11 +34,23 @@ import io.requery.query.Tuple;
 import io.requery.query.function.Case;
 import io.requery.query.function.Coalesce;
 import io.requery.query.function.Count;
+import io.requery.query.function.Now;
+import io.requery.query.function.Random;
+import io.requery.query.function.Upper;
 import io.requery.sql.EntityDataStore;
+import io.requery.sql.RowCountException;
+import io.requery.sql.StatementExecutionException;
 import io.requery.test.model.Address;
+import io.requery.test.model.Child;
+import io.requery.test.model.ChildManyToManyNoCascade;
+import io.requery.test.model.ChildManyToOneNoCascade;
+import io.requery.test.model.ChildOneToManyNoCascade;
+import io.requery.test.model.ChildOneToOneNoCascade;
 import io.requery.test.model.Group;
 import io.requery.test.model.GroupType;
 import io.requery.test.model.Group_Person;
+import io.requery.test.model.Parent;
+import io.requery.test.model.ParentNoCascade;
 import io.requery.test.model.Person;
 import io.requery.test.model.Phone;
 import io.requery.util.function.Consumer;
@@ -43,6 +59,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.sql.SQLException;
+import java.sql.SQLIntegrityConstraintViolationException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -62,6 +79,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+import static io.requery.query.Unary.not;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -108,6 +126,29 @@ public abstract class FunctionalTest extends RandomData {
     }
 
     @Test
+    public void testCopy() {
+        Address address = new Address();
+        address.setCity("San Francisco");
+        address.setState("CA");
+        address.setCountry("US");
+        Address copy = address.copy();
+        assertEquals(address.getCity(), copy.getCity());
+        assertEquals(address.getState(), copy.getState());
+        assertEquals(address.getCountry(), copy.getCountry());
+    }
+
+    @Test
+    public void testConverter() {
+        Phone phone = randomPhone();
+        phone.getExtensions().add(1);
+        phone.getExtensions().add(999);
+        data.insert(phone);
+        Phone result = data.select(Phone.class)
+                .where(Phone.EXTENSIONS.eq(phone.getExtensions())).get().first();
+        assertSame(phone, result);
+    }
+
+    @Test
     public void testInsert() {
         Person person = randomPerson();
         data.insert(person);
@@ -115,6 +156,22 @@ public abstract class FunctionalTest extends RandomData {
         Person cached = data.select(Person.class)
                 .where(Person.ID.equal(person.getId())).get().first();
         assertSame(cached, person);
+    }
+
+    @Test
+    public void testInsertDefaultValue() {
+        Person person = randomPerson();
+        data.insert(person);
+        assertTrue(person.getId() > 0);
+        assertEquals("empty", person.getDescription());
+    }
+
+    @Test
+    public void testInsertSelectNullKeyReference() {
+        Person person = randomPerson();
+        data.insert(person);
+        assertNull(person.getAddress());
+        assertNull(data.select(Person.class).get().first().getAddress());
     }
 
     @Test
@@ -213,6 +270,20 @@ public abstract class FunctionalTest extends RandomData {
     }
 
     @Test
+    public void testInsertIntoSelectQuery() {
+        Group group = new Group();
+        group.setName("Bob");
+        group.setDescription("Bob's group");
+        data.insert(group);
+        int count = data.insert(Person.class, Person.NAME, Person.DESCRIPTION)
+                .query(data.select(Group.NAME, Group.DESCRIPTION)).get().first().count();
+        assertEquals(1, count);
+        Person p = data.select(Person.class).get().first();
+        assertEquals("Bob", p.getName());
+        assertEquals("Bob's group", p.getDescription());
+    }
+
+    @Test
     public void testInsertWithTransactionCallable() {
         assertTrue("success".equals(
                 data.runInTransaction(new Callable<String>() {
@@ -226,6 +297,26 @@ public abstract class FunctionalTest extends RandomData {
                         return "success";
                     }
                 })));
+    }
+
+    @Test
+    public void testInsertWithTransactionCallableRollback() {
+        boolean rolledBack = false;
+        try {
+            data.runInTransaction(new Callable<String>() {
+                @Override
+                public String call() {
+                    Person person = randomPerson();
+                    data.insert(person);
+                    assertTrue(person.getId() > 0);
+                    throw new RuntimeException("Exception!");
+                }
+            }, TransactionIsolation.SERIALIZABLE);
+        } catch (RollbackException e) {
+            rolledBack = true;
+            assertSame(0, data.select(Person.class).get().toList().size());
+        }
+        assertTrue(rolledBack);
     }
 
     @Test
@@ -473,6 +564,20 @@ public abstract class FunctionalTest extends RandomData {
     }
 
     @Test
+    public void testVersionUpdate() {
+        Group group = new Group();
+        group.setName("Test1");
+        data.insert(group);
+        assertTrue(group.getVersion() > 0);
+        group.setName("Test2");
+        data.update(group);
+        assertTrue(group.getVersion() > 0);
+        group.setName("Test3");
+        data.update(group);
+        assertTrue(group.getVersion() > 0);
+    }
+
+    @Test
     public void testFillResult() {
         Person person = randomPerson();
         data.insert(person);
@@ -543,6 +648,23 @@ public abstract class FunctionalTest extends RandomData {
         Phone phone = data.select(Phone.class)
                 .where(Phone.ID.equal(phoneId)).get().firstOrNull();
         assertNull(phone);
+    }
+
+    @Test
+    public void testDeleteOneToManyResult() {
+        Person person = randomPerson();
+        data.insert(person);
+        Phone phone1 = randomPhone();
+        Phone phone2 = randomPhone();
+        phone1.setOwner(person);
+        phone2.setOwner(person);
+        data.insert(phone1);
+        data.insert(phone2);
+        data.refresh(person);
+        assertEquals(2, person.getPhoneNumbers().toList().size());
+        data.delete(person.getPhoneNumbers());
+        Phone cached = data.findByKey(Phone.class, phone1.getId());
+        assertNull(cached);
     }
 
     @Test
@@ -673,6 +795,22 @@ public abstract class FunctionalTest extends RandomData {
     }
 
     @Test
+    public void testInsertManyToManySelfReferencing() {
+        Person person = randomPerson();
+        data.insert(person);
+        List<Person> added = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            Person p = randomPerson();
+            person.getFriends().add(p);
+            added.add(p);
+        }
+        data.update(person);
+        assertTrue(added.containsAll(person.getFriends()));
+        int count = data.count(Person.class).get().value();
+        assertEquals(11, count);
+    }
+
+    @Test
     public void testIterateInsertMany() {
         Person person = randomPerson();
         assertTrue(person.getGroups().toList().isEmpty());
@@ -737,6 +875,30 @@ public abstract class FunctionalTest extends RandomData {
     }
 
     @Test
+    public void testQueryFunctionNow() {
+        Person person = randomPerson();
+        Calendar calendar = Calendar.getInstance();
+        calendar.add(Calendar.DATE, 1);
+        person.setBirthday(calendar.getTime());
+        data.insert(person);
+        try (Result<Person> query = data.select(Person.class)
+                .where(Person.BIRTHDAY.gt(Now.now(Date.class))).get()) {
+            assertEquals(1, query.toList().size());
+        }
+    }
+
+    @Test
+    public void testQueryFunctionRandom() {
+        for (int i = 0; i < 10; i++) {
+            Person person = randomPerson();
+            data.insert(person);
+        }
+        try (Result<Person> query = data.select(Person.class).orderBy(new Random()).get()) {
+            assertEquals(10, query.toList().size());
+        }
+    }
+
+    @Test
     public void testSingleQueryWhere() {
         final String name = "duplicateFirstName";
         for (int i = 0; i < 10; i++) {
@@ -747,6 +909,31 @@ public abstract class FunctionalTest extends RandomData {
         try (Result<Person> query = data.select(Person.class)
                 .where(Person.NAME.equal(name)).get()) {
             assertEquals(10, query.toList().size());
+        }
+    }
+
+    @Test
+    public void testSingleQueryWhereNot() {
+        final String name = "firstName";
+        final String email = "not@test.io";
+        for (int i = 0; i < 10; i++) {
+            Person person = randomPerson();
+            switch (i) {
+                case 0:
+                    person.setName(name);
+                    break;
+                case 1:
+                    person.setEmail(email);
+                    break;
+            }
+            data.insert(person);
+        }
+        try (Result<Person> query = data.select(Person.class)
+                .where(
+                        not(Person.NAME.equal(name)
+                                .or(Person.EMAIL.equal(email)))
+                ).get()) {
+            assertEquals(8, query.toList().size());
         }
     }
 
@@ -992,6 +1179,24 @@ public abstract class FunctionalTest extends RandomData {
     }
 
     @Test
+    public void testQueryOrderByFunction() {
+        Person person = randomPerson();
+        person.setName("BOBB");
+        data.insert(person);
+        person = randomPerson();
+        person.setName("BobA");
+        data.insert(person);
+        person = randomPerson();
+        person.setName("bobC");
+        data.insert(person);
+        List<Tuple> list = data.select(Person.NAME)
+                .orderBy(Upper.upper(Person.NAME).desc()).get().toList();
+        assertTrue(list.get(0).get(0).equals("bobC"));
+        assertTrue(list.get(1).get(0).equals("BOBB"));
+        assertTrue(list.get(2).get(0).equals("BobA"));
+    }
+
+    @Test
     public void testQueryGroupBy() {
         for (int i = 0; i < 5; i++) {
             Person person = randomPerson();
@@ -1019,7 +1224,7 @@ public abstract class FunctionalTest extends RandomData {
         data.insert(group);
         person.getGroups().add(group);
         data.update(person);
-        Return<Result<Tuple>> groupNames = data.select(Group.NAME)
+        Return<? extends Result<Tuple>> groupNames = data.select(Group.NAME)
                 .where(Group.NAME.equal(name));
         Person p = data.select(Person.class).where(Person.NAME.in(groupNames)).get().first();
         assertEquals(p.getName(), name);
@@ -1329,6 +1534,34 @@ public abstract class FunctionalTest extends RandomData {
         }
     }
 
+    @Test
+    public void testQueryUnionJoinOnSameEntities() {
+        Group group = new Group();
+        group.setName("Hello!");
+        data.insert(group);
+        Person person1 = randomPerson();
+        person1.setName("Carol");
+        person1.getGroups().add(group);
+        data.insert(person1);
+        Person person2 = randomPerson();
+        person2.getGroups().add(group);
+        person2.setName("Bob");
+        data.insert(person2);
+        List<Tuple> result = data.select(Person.NAME.as("personName"), Group.NAME.as("groupName"))
+                .where(Person.ID.eq(person1.getId()))
+                .union()
+                .select(Person.NAME.as("personName"), Group.NAME.as("groupName"))
+                .where(Person.ID.eq(person2.getId()))
+                .orderBy(Person.NAME.as("personName")).get().toList();
+        System.err.println(result.size());
+        System.err.println(result.size() == 2);
+        assertTrue(result.size() == 2);
+        assertTrue(result.get(0).get("personName").equals("Bob"));
+        assertTrue(result.get(0).get("groupName").equals("Hello!"));
+        assertTrue(result.get(1).get("personName").equals("Carol"));
+        assertTrue(result.get(1).get("groupName").equals("Hello!"));
+    }
+
     @Test(expected = PersistenceException.class)
     public void testViolateUniqueConstraint() {
         UUID uuid = UUID.randomUUID();
@@ -1340,4 +1573,231 @@ public abstract class FunctionalTest extends RandomData {
         data.insert(p2);
         fail();
     }
+
+    @Test(expected = PersistenceException.class)
+    public void testInsertWithoutCascadeActionSave() {
+        Child child = new Child();
+        child.setId(1);
+        Parent parent = new Parent();
+        parent.setChild(child);
+
+        // This violates the Foreign Key Constraint, because Child does not exist and CascadeAction.SAVE is not specified
+        data.insert(parent);
+    }
+
+    @Test(expected = StatementExecutionException.class)
+    public void testInsertNoCascade_OneToOne_NonExistingChild() {
+        // Insert parent entity, associated one-to-one to a non existing child entity
+        // This should fail with a foreign-key violation, since child does not exist in the database
+        ChildOneToOneNoCascade child = new ChildOneToOneNoCascade();
+        ParentNoCascade parent = new ParentNoCascade();
+        parent.setId(1);
+        parent.setOneToOne(child);
+        data.insert(parent);
+    }
+
+    @Test
+    public void testInsertNoCascade_OneToOne_ExistingChild() {
+        // Insert parent entity, associated one-to-one to an existing child entity
+        ChildOneToOneNoCascade child = new ChildOneToOneNoCascade();
+        child.setId(1);
+        child.setAttribute("1");
+        data.insert(child);
+        ParentNoCascade parent = new ParentNoCascade();
+        parent.setId(1);
+        parent.setOneToOne(child);
+        data.insert(parent);
+
+        // Assert that child has been associated to parent
+        ParentNoCascade parentGot = data.findByKey(ParentNoCascade.class, 1l);
+        assertEquals(child, parentGot.getOneToOne());
+    }
+
+    @Test(expected = StatementExecutionException.class)
+    public void testInsertNoCascade_ManyToOne_NonExistingchild() {
+        // Insert parent entity, associated many-to-one to a non existing child entity
+        // This should fail with a foreign-key violation, since child does not exist in the database
+        ChildManyToOneNoCascade child = new ChildManyToOneNoCascade();
+        child.setId(1);
+        child.setAttribute("1");
+        ParentNoCascade parent = new ParentNoCascade();
+        parent.setId(1);
+        parent.setManyToOne(child);
+        data.insert(parent);
+    }
+
+    @Test
+    public void testInsertNoCascade_ManyToOne_ExistingChild() {
+        // Insert parent entity, associated many-to-one to an existing child entity
+        ChildManyToOneNoCascade child = new ChildManyToOneNoCascade();
+        child.setId(1);
+        child.setAttribute("1");
+        data.insert(child);
+        ParentNoCascade parent = new ParentNoCascade();
+        parent.setId(1);
+        parent.setManyToOne(child);
+        data.insert(parent);
+
+        // Assert that child has been associated to parent
+        ParentNoCascade parentGot = data.findByKey(ParentNoCascade.class, 1l);
+        assertEquals(child, parentGot.getManyToOne());
+    }
+
+    //@Test(expected = StatementExecutionException.class)
+    @Test(expected = RowCountException.class)
+    public void testInsertNoCascade_OneToMany_NonExistingChild() {
+        // Insert parent entity, associated one-to-may to 1 non-existing child entity
+        ChildOneToManyNoCascade child = new ChildOneToManyNoCascade();
+        child.setId(1);
+        child.setAttribute("1");
+        ParentNoCascade parent = new ParentNoCascade();
+        parent.setId(1);
+        parent.getOneToMany().add(child);
+        data.insert(parent);
+    }
+
+    @Test
+    public void testInsertNoCascade_OneToMany_ExistingChild() {
+        // Insert parent entity, associated one-to-may to 1 existing child entity
+        ChildOneToManyNoCascade child = new ChildOneToManyNoCascade();
+        child.setId(1);
+        child.setAttribute("1");
+        data.insert(child);
+        ParentNoCascade parent = new ParentNoCascade();
+        parent.setId(1);
+        parent.getOneToMany().add(child);
+        data.insert(parent);
+
+        // Assert that child has been associated to parent
+        ParentNoCascade parentGot = data.findByKey(ParentNoCascade.class, 1l);
+        assertTrue(parentGot.getOneToMany().size() == 1);
+        assertEquals(child, parentGot.getOneToMany().get(0));
+    }
+
+    @Test(expected = StatementExecutionException.class)
+    public void testInsertNoCascade_ManyToMany_NonExistingChild() {
+        // Insert parent entity, associated many-to-may to 1 non-existing child entity
+        ChildManyToManyNoCascade child = new ChildManyToManyNoCascade();
+        child.setId(1);
+        child.setAttribute("1");
+        ParentNoCascade parent = new ParentNoCascade();
+        parent.setId(1);
+        parent.getManyToMany().add(child);
+        data.insert(parent);
+    }
+
+    @Test
+    public void testInsertNoCascade_ManyToMany_ExistingChild() {
+        // Insert parent entity, associated many-to-may to 1 existing child entity
+        ChildManyToManyNoCascade child = new ChildManyToManyNoCascade();
+        child.setId(1);
+        child.setAttribute("1");
+        data.insert(child);
+        ParentNoCascade parent = new ParentNoCascade();
+        parent.setId(1);
+        parent.getManyToMany().add(child);
+        data.insert(parent);
+
+        // Assert that child has been associated to parent
+        ParentNoCascade parentGot = data.findByKey(ParentNoCascade.class, 1l);
+        assertTrue(parentGot.getManyToMany().size() == 1);
+        assertEquals(child, parentGot.getManyToMany().get(0));
+    }
+
+    @Test
+    public void testDeleteNoCascade_OneToOne() {
+        // Insert parent and child entity
+        ChildOneToOneNoCascade child = new ChildOneToOneNoCascade();
+        child.setId(123);
+        child.setAttribute("1");
+        ParentNoCascade parent = new ParentNoCascade();
+        parent.setId(123);
+        parent.setOneToOne(child);
+        data.insert(child);
+        data.insert(parent);
+
+        // Delete parent
+        data.delete(parent);
+
+        // Assert that child has not been deleted (i.e. that delete has not been cascaded)
+        ChildOneToOneNoCascade childGot = data.findByKey(ChildOneToOneNoCascade.class, 123l);
+        assertNotNull(childGot);
+    }
+
+    @Test
+    public void testDeleteNoCascade_ManyToOne() {
+        // Insert parent entity and child
+        ChildManyToOneNoCascade child = new ChildManyToOneNoCascade();
+        child.setId(123);
+        child.setAttribute("1");
+        ParentNoCascade parent = new ParentNoCascade();
+        parent.setId(123);
+        parent.setManyToOne(child);
+        data.insert(child);
+        data.insert(parent);
+
+        // Delete parent
+        data.delete(parent);
+
+        // Assert that child has not been deleted (i.e. that delete has not been cascaded)
+        ChildManyToOneNoCascade childGot = data.findByKey(ChildManyToOneNoCascade.class, 123l);
+        assertNotNull(childGot);
+    }
+
+    @Test
+    public void testDeleteNoCascade_OneToMany() {
+        // Insert parent entity and children
+        ChildOneToManyNoCascade child1 = new ChildOneToManyNoCascade();
+        child1.setId(1);
+        child1.setAttribute("1");
+        ChildOneToManyNoCascade child2 = new ChildOneToManyNoCascade();
+        child2.setId(2);
+        child2.setAttribute("2");
+        ParentNoCascade parent = new ParentNoCascade();
+        parent.setId(1);
+        parent.getOneToMany().add(child1);
+        parent.getOneToMany().add(child2);
+        data.insert(child1);
+        data.insert(child2);
+        data.insert(parent);
+
+        // Delete parent
+        data.delete(parent);
+
+        // Assert that children have not been deleted (i.e. that delete has not been cascaded)
+        ChildOneToManyNoCascade child1Got = data.findByKey(ChildOneToManyNoCascade.class, 1);
+        assertNotNull(child1Got);
+        assertNull(child1Got.getParent());
+        ChildOneToManyNoCascade child2Got = data.findByKey(ChildOneToManyNoCascade.class, 2);
+        assertNotNull(child2Got);
+        assertNull(child2Got.getParent());
+    }
+
+    @Test
+    public void testDeleteNoCascade_ManyToMany() {
+        // Insert parent entity and children
+        ChildManyToManyNoCascade child1 = new ChildManyToManyNoCascade();
+        child1.setId(1);
+        child1.setAttribute("1");
+        ChildManyToManyNoCascade child2 = new ChildManyToManyNoCascade();
+        child2.setId(2);
+        child2.setAttribute("2");
+        ParentNoCascade parent = new ParentNoCascade();
+        parent.setId(1);
+        parent.getManyToMany().add(child1);
+        parent.getManyToMany().add(child2);
+        data.insert(child1);
+        data.insert(child2);
+        data.insert(parent);
+
+        // Delete parent
+        data.delete(parent);
+
+        // Assert that children have not been deleted (i.e. that delete has not been cascaded)
+        ChildManyToManyNoCascade child1Got = data.findByKey(ChildManyToManyNoCascade.class, 1);
+        assertNotNull(child1Got);
+        ChildManyToManyNoCascade child2Got = data.findByKey(ChildManyToManyNoCascade.class, 2);
+        assertNotNull(child2Got);
+    }
+
 }

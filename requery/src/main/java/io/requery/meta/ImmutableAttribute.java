@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 requery.io
+ * Copyright 2017 requery.io
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,38 +19,39 @@ package io.requery.meta;
 final class ImmutableAttribute<T, V> extends BaseAttribute<T, V> {
 
     ImmutableAttribute(AttributeBuilder<T, V> builder) {
-        name = builder.getName();
+        builderProperty = builder.getBuilderProperty();
+        cardinality = builder.getCardinality();
+        cascadeActions = builder.getCascadeActions();
         classType = builder.getClassType();
+        collate = builder.getCollate();
+        converter = builder.getConverter();
+        defaultValue = builder.getDefaultValue();
+        definition = builder.getDefinition();
+        deleteAction = builder.getDeleteAction();
+        elementClass = builder.getElementClass();
+        indexNames = builder.getIndexNames();
+        initializer = builder.getInitializer();
+        isForeignKey = builder.isForeignKey();
+        isGenerated = builder.isGenerated();
+        isIndex = builder.isIndexed();
+        isKey = builder.isKey();
+        isLazy = builder.isLazy();
+        isNullable = builder.isNullable();
+        isReadOnly = builder.isReadOnly();
+        isUnique = builder.isUnique();
+        isVersion = builder.isVersion();
+        length = builder.getLength();
+        mapKeyClass = builder.getMapKeyClass();
+        mappedAttribute = builder.getMappedAttribute();
+        name = builder.getName();
+        orderByAttribute = builder.getOrderByAttribute();
+        orderByDirection = builder.getOrderByDirection();
         primitiveKind = builder.getPrimitiveKind();
         property = builder.getProperty();
         propertyName = builder.getPropertyName();
         propertyState = builder.getPropertyState();
-        initializer = builder.getInitializer();
-        builderProperty = builder.getBuilderProperty();
-        isLazy = builder.isLazy();
-        length = builder.getLength();
-        isKey = builder.isKey();
-        isUnique = builder.isUnique();
-        isGenerated = builder.isGenerated();
-        isNullable = builder.isNullable();
-        isVersion = builder.isVersion();
-        isForeignKey = builder.isForeignKey();
-        isIndex = builder.isIndexed();
-        defaultValue = builder.getDefaultValue();
-        collate = builder.getCollate();
-        indexNames = builder.getIndexNames();
-        cardinality = builder.getCardinality();
-        deleteAction = builder.getDeleteAction();
-        updateAction = builder.getUpdateAction();
-        cascadeActions = builder.getCascadeActions();
         referencedAttribute = builder.getReferencedAttribute();
         referencedClass = builder.getReferencedClass();
-        mapKeyClass = builder.getMapKeyClass();
-        elementClass = builder.getElementClass();
-        isForeignKey = builder.isForeignKey();
-        converter = builder.getConverter();
-        mappedAttribute = builder.getMappedAttribute();
-        orderByAttribute = builder.getOrderByAttribute();
-        orderByDirection = builder.getOrderByDirection();
+        updateAction = builder.getUpdateAction();
     }
 }

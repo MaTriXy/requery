@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 requery.io
+ * Copyright 2017 requery.io
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,26 +17,26 @@
 package io.requery.reactivex;
 
 import io.reactivex.Completable;
-import io.requery.EntityStore;
-import io.requery.meta.Attribute;
-import io.requery.query.Result;
+import io.reactivex.Maybe;
 import io.reactivex.Observable;
 import io.reactivex.Single;
+import io.requery.BlockingEntityStore;
+import io.requery.EntityStore;
+import io.requery.meta.Attribute;
+import io.requery.util.function.Function;
 
 import javax.annotation.CheckReturnValue;
 import javax.annotation.ParametersAreNonnullByDefault;
-import java.util.Arrays;
-import java.util.List;
 
 /**
  * Extends {@link EntityStore} where all return values are either single {@link Single} instances or
  * {@link Completable} representing the outcome of each operation. {@link Observable} query results
- * can be obtained via {@link Result#observable()}.
+ * can be obtained via {@link ReactiveResult#observable()}.
  *
  * @param <T> entity base type. See {@link EntityStore}.
  */
 @ParametersAreNonnullByDefault
-public abstract class ReactiveEntityStore<T> implements EntityStore<T, Object> {
+public abstract class ReactiveEntityStore<T> implements EntityStore<T, Object>, ReactiveQueryable<T> {
 
     @Override
     @CheckReturnValue
@@ -52,8 +52,7 @@ public abstract class ReactiveEntityStore<T> implements EntityStore<T, Object> {
 
     @Override
     @CheckReturnValue
-    public abstract <K, E extends T> Single<Iterable<K>> insert(
-            Iterable<E> entities, Class<K> keyClass);
+    public abstract <K, E extends T> Single<Iterable<K>> insert(Iterable<E> entities, Class<K> keyClass);
 
     @Override
     @CheckReturnValue
@@ -85,8 +84,7 @@ public abstract class ReactiveEntityStore<T> implements EntityStore<T, Object> {
 
     @Override
     @CheckReturnValue
-    public abstract <E extends T> Single<Iterable<E>> refresh(
-            Iterable<E> entities, Attribute<?, ?>... attributes);
+    public abstract <E extends T> Single<Iterable<E>> refresh(Iterable<E> entities, Attribute<?, ?>... attributes);
 
     @Override
     @CheckReturnValue
@@ -102,13 +100,8 @@ public abstract class ReactiveEntityStore<T> implements EntityStore<T, Object> {
 
     @Override
     @CheckReturnValue
-    public abstract <E extends T, K> Single<E> findByKey(Class<E> type, K key);
+    public abstract <E extends T, K> Maybe<E> findByKey(Class<E> type, K key);
 
     @CheckReturnValue
-    @SafeVarargs
-    public final <E> Observable<E> runInTransaction(Single<? extends E>... elements) {
-        return runInTransaction(Arrays.asList(elements));
-    }
-
-    abstract <E> Observable<E> runInTransaction(List<Single<? extends E>> elements);
+    public abstract <R> Single<R> runInTransaction(Function<BlockingEntityStore<T>, R> function);
 }

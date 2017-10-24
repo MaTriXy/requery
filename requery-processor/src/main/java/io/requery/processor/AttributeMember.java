@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 requery.io
+ * Copyright 2017 requery.io
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -120,7 +120,9 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
     private String referencedTable;
     private String mappedBy;
     private String defaultValue;
+    private String definition;
     private String collate;
+    private String optionalClassName;
     private String orderByColumn;
     private Order orderByDirection;
     private AssociativeEntityDescriptor associativeDescriptor;
@@ -148,7 +150,9 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
         if (cardinality() != null && entity.isImmutable()) {
             validator.error("Immutable value type cannot contain relational references");
         }
-        checkReserved(name(), validator);
+        if (!isTransient) {
+            checkReserved(name(), validator);
+        }
         isEmbedded = annotationOf(Embedded.class).isPresent() ||
             annotationOf(javax.persistence.Embedded.class).isPresent();
         indexNames.forEach(name -> checkReserved(name, validator));
@@ -186,29 +190,47 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
                 if (isMap && cardinality != null) {
                     builderClass = MapAttributeBuilder.class;
                 }
-                isOptional = Mirrors.isInstance(types, element, Optional.class);
+                // check for optional compatible types
+                String[] names = {
+                        Optional.class.getName(),
+                        "com.google.common.base.Optional",
+                        "java8.util.Optional"
+                };
+                for (String name : names) {
+                    if (Mirrors.isInstance(types, element, name)) {
+                        isOptional = true;
+                        optionalClassName = name;
+                        break;
+                    }
+                }
                 isBoolean = Mirrors.isInstance(types, element, Boolean.class);
             }
         }
         if (isIterable) {
-            validators.add(validateCollectionType(processingEnvironment));
+            ElementValidator validator = validateCollectionType(processingEnvironment);
+            if (validator != null) {
+                validators.add(validator);
+            }
         }
     }
 
     private ElementValidator validateCollectionType(ProcessingEnvironment processingEnvironment) {
         Types types = processingEnvironment.getTypeUtils();
         TypeElement collectionElement = (TypeElement) types.asElement(typeMirror());
-        ElementValidator validator = new ElementValidator(collectionElement, processingEnvironment);
-        if (Mirrors.isInstance(types, collectionElement, List.class)) {
-            builderClass = ListAttributeBuilder.class;
-        } else if (Mirrors.isInstance(types, collectionElement, Set.class)) {
-            builderClass = SetAttributeBuilder.class;
-        } else if (Mirrors.isInstance(types, collectionElement, Iterable.class)) {
-            builderClass = ResultAttributeBuilder.class;
-        } else {
-            validator.error("Invalid collection type, must be Set, List or Iterable");
+        if (collectionElement != null) {
+            ElementValidator validator = new ElementValidator(collectionElement, processingEnvironment);
+            if (Mirrors.isInstance(types, collectionElement, List.class)) {
+                builderClass = ListAttributeBuilder.class;
+            } else if (Mirrors.isInstance(types, collectionElement, Set.class)) {
+                builderClass = SetAttributeBuilder.class;
+            } else if (Mirrors.isInstance(types, collectionElement, Iterable.class)) {
+                builderClass = ResultAttributeBuilder.class;
+            } else {
+                validator.error("Invalid collection type, must be Set, List or Iterable");
+            }
+            return validator;
         }
-        return validator;
+        return null;
     }
 
     private void processFieldAccessAnnotations(ElementValidator validator) {
@@ -285,6 +307,7 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
             isNullable = column.nullable();
             defaultValue = column.value();
             collate = column.collate();
+            definition = column.definition();
             if (column.length() > 0) {
                 length = column.length();
             }
@@ -344,6 +367,7 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
             isNullable = persistenceColumn.nullable();
             length = persistenceColumn.length();
             isReadOnly = !persistenceColumn.updatable();
+            definition = persistenceColumn.columnDefinition();
         });
 
         annotationOf(Enumerated.class).ifPresent(enumerated -> {
@@ -543,13 +567,14 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
             return element().getSimpleName().toString();
         } else if (element().getKind() == ElementKind.METHOD) {
             ExecutableElement methodElement = (ExecutableElement) element();
-            String name = methodElement.getSimpleName().toString();
-            name = Names.removeMethodPrefixes(name);
+            String originalName = methodElement.getSimpleName().toString();
+            String name = Names.removeMethodPrefixes(originalName);
             if (Names.isAllUpper(name)) {
-                return name.toLowerCase(Locale.ROOT);
+                name = name.toLowerCase(Locale.ROOT);
             } else {
-                return Names.lowerCaseFirst(name);
+                name = Names.lowerCaseFirst(name);
             }
+            return Names.checkReservedName(name, originalName);
         } else {
             throw new IllegalStateException();
         }
@@ -617,6 +642,7 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
         // for a method strip any accessor prefix such as get/is
         if (element().getKind() == ElementKind.METHOD) {
             ExecutableElement executableElement = (ExecutableElement) element();
+            String originalName = elementName;
             AccessorNamePrefix prefix = AccessorNamePrefix.fromElement(executableElement);
             switch (prefix) {
                 case GET:
@@ -626,7 +652,9 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
                     elementName = elementName.replaceFirst("is", "");
                     break;
             }
-            return Names.isAllUpper(elementName) ? elementName : Names.lowerCaseFirst(elementName);
+            elementName = Names.isAllUpper(elementName) ?
+                    elementName : Names.lowerCaseFirst(elementName);
+            return Names.checkReservedName(elementName, originalName);
         }
         return elementName;
     }
@@ -654,6 +682,11 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
     @Override
     public String defaultValue() {
         return defaultValue;
+    }
+
+    @Override
+    public String definition() {
+        return definition;
     }
 
     @Override
@@ -771,6 +804,11 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
     }
 
     @Override
+    public String optionalClass() {
+        return optionalClassName;
+    }
+
+    @Override
     public String orderBy() {
         return orderByColumn;
     }
@@ -831,7 +869,8 @@ class AttributeMember extends BaseProcessableElement<Element> implements Attribu
             for (CascadeType type : types) {
                 switch (type) {
                     case ALL:
-                        actions.addAll(EnumSet.allOf(CascadeAction.class));
+                        actions.add(CascadeAction.SAVE);
+                        actions.add(CascadeAction.DELETE);
                     case PERSIST:
                         actions.add(CascadeAction.SAVE);
                         break;

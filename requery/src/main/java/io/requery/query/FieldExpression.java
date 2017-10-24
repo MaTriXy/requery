@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 requery.io
+ * Copyright 2017 requery.io
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package io.requery.query;
 
+import io.requery.meta.QueryExpression;
 import io.requery.query.function.Abs;
 import io.requery.query.function.Avg;
 import io.requery.query.function.Function;
@@ -29,6 +30,7 @@ import io.requery.query.function.Trim;
 import io.requery.query.function.Upper;
 import io.requery.util.Objects;
 
+import java.util.ArrayList;
 import java.util.Collection;
 
 /**
@@ -38,11 +40,7 @@ import java.util.Collection;
  *
  * @param <V> field type
  */
-public abstract class FieldExpression<V> implements
-    Expression<V>,
-    Functional<V>,
-    Aliasable<Expression<V>>,
-    Conditional<LogicalCondition<? extends Expression<V>, ?>, V> {
+public abstract class FieldExpression<V> implements QueryExpression<V> {
 
     protected FieldExpression() {
     }
@@ -57,7 +55,12 @@ public abstract class FieldExpression<V> implements
     public abstract Class<V> getClassType();
 
     @Override
-    public Expression<V> as(String alias) {
+    public Expression<V> getInnerExpression() {
+        return null;
+    }
+
+    @Override
+    public FieldExpression<V> as(String alias) {
         return new AliasedExpression<>(this, alias);
     }
 
@@ -292,10 +295,32 @@ public abstract class FieldExpression<V> implements
         return new ExpressionCondition<>(this, Operator.IN, values);
     }
 
+    @SuppressWarnings("unchecked")
+    @Override
+    public LogicalCondition<? extends Expression<V>, ?> in(V first, Object... values) {
+        Collection<V> collection = new ArrayList<>(1 + values.length);
+        collection.add(first);
+        for (Object o : values) {
+            collection.add((V)o);
+        }
+        return in(collection);
+    }
+
     @Override
     public LogicalCondition<? extends Expression<V>, Collection<V>> notIn(Collection<V> values) {
         Objects.requireNotNull(values);
         return new ExpressionCondition<>(this, Operator.NOT_IN, values);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public LogicalCondition<? extends Expression<V>, ?> notIn(V first, Object... values) {
+        Collection<V> collection = new ArrayList<>(1 + values.length);
+        collection.add(first);
+        for (Object o : values) {
+            collection.add((V)o);
+        }
+        return notIn(collection);
     }
 
     @Override
@@ -383,6 +408,12 @@ public abstract class FieldExpression<V> implements
                 Condition<V, ?> condition) {
             return new ExpressionCondition<LogicalCondition<L, R>, Condition<?, ?>>(
                     this, Operator.OR, condition);
+        }
+
+        @Override
+        public LogicalCondition<LogicalCondition<L, R>, Condition<?, ?>> not() {
+            return new ExpressionCondition<LogicalCondition<L, R>, Condition<?, ?>>(
+                    this, Operator.NOT, new NullOperand());
         }
 
         @Override

@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 requery.io
+ * Copyright 2017 requery.io
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,38 +16,40 @@
 
 package io.requery.test.kt
 
-import io.requery.Persistable
 import io.requery.kotlin.*
-import io.requery.sql.*
+import io.requery.sql.KotlinConfiguration
+import io.requery.sql.KotlinEntityDataStore
+import io.requery.sql.SchemaModifier
+import io.requery.sql.TableCreationMode
 import org.h2.jdbcx.JdbcDataSource
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import java.net.URL
-import java.util.Calendar
-import java.util.Random
-import java.util.UUID
+import java.util.*
 
 class FunctionalTest {
 
-    var instance : KotlinEntityDataStore<Persistable>? = null
-    val data : KotlinEntityDataStore<Persistable> get() = instance!!
+    lateinit var instance : KotlinEntityDataStore<Any>
+    val data : KotlinEntityDataStore<Any> get() = instance
 
-    fun randomPerson(): Person {
-        val random = Random()
-        val person = PersonEntity()
-        val firstNames = arrayOf("Alice", "Bob", "Carol")
-        val lastNames = arrayOf("Smith", "Lee", "Jones")
-        person.name = (firstNames[random.nextInt(firstNames.size)] + " " +
-                lastNames[random.nextInt(lastNames.size)])
-        person.email = (person.name.replace(" ".toRegex(), "").toLowerCase() + "@example.com")
-        person.uuid = (UUID.randomUUID())
-        person.homepage = (URL("http://www.requery.io"))
-        val calendar = Calendar.getInstance()
-        calendar.set(1900 + random.nextInt(90), random.nextInt(12), random.nextInt(30))
-        person.birthday = calendar.time
-        return person
+    companion object {
+        fun randomPerson(): Person {
+            val random = Random()
+            val person = PersonEntity()
+            val firstNames = arrayOf("Alice", "Bob", "Carol")
+            val lastNames = arrayOf("Smith", "Lee", "Jones")
+            person.name = (firstNames[random.nextInt(firstNames.size)] + " " +
+                    lastNames[random.nextInt(lastNames.size)])
+            person.email = (person.name.replace(" ".toRegex(), "").toLowerCase() + "@example.com")
+            person.uuid = (UUID.randomUUID())
+            person.homepage = (URL("http://www.requery.io"))
+            val calendar = Calendar.getInstance()
+            calendar.set(1900 + random.nextInt(90), random.nextInt(12), random.nextInt(30))
+            person.birthday = calendar.time
+            return person
+        }
     }
 
     @Before
@@ -87,9 +89,21 @@ class FunctionalTest {
         data.invoke {
             insert(person)
             assertTrue(person.id > 0)
-            val result = data.select(Person::id, Person::name) limit 1
+            val result = select(Person::class, Person::id, Person::name) limit 1
             val first = result().first()
             assertNotNull(first.name)
+        }
+    }
+
+    @Test
+    fun testSelectTuple() {
+        val person = randomPerson()
+        data.invoke {
+            insert(person)
+            assertTrue(person.id > 0)
+            val result = select(Person::id, Person::name) limit 1
+            val first = result().first()
+            assertNotNull(first[0])
         }
     }
 
@@ -125,6 +139,44 @@ class FunctionalTest {
         val list = result.get().toList()
         assertTrue(list.contains(person2))
         assertTrue(list.contains(person3))
+    }
+
+    @Test
+    fun testQueryJoinOrderBy() {
+        val person = randomPerson()
+        person.address = AddressEntity()
+        person.address.city = "San Francisco"
+        person.address.country = "US"
+        person.address.state = "CA"
+        data.insert(person)
+        // not a useful query just tests the sql output
+        val result = data.select(Address::class)
+                .join(Person::class).on(Person::address.eq(Person::id))
+                .where(Person::id.eq(person.id))
+                .orderBy(Address::city.desc())
+                .get()
+        assertTrue(result.toList().size > 0)
+    }
+
+    @Test
+    fun testQueryRawEntity() {
+        val person = randomPerson()
+        data.insert(person)
+        // not a useful query just tests the sql output
+        val result = data.raw(Person::class, "SELECT * FROM person")
+        assertSame(result.first(), person)
+    }
+
+    @Test
+    fun testQueryUpdate() {
+        val person = randomPerson()
+        person.age = 100
+        data.insert(person)
+        val rowCount = data.update<Person>(Person::class)
+                .set(Person::about, "nothing")
+                .set(Person::age, 50)
+                .where(Person::age.eq(100)).get().value()
+        assertEquals(1, rowCount.toLong())
     }
 
     @After

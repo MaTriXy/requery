@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 requery.io
+ * Copyright 2017 requery.io
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -61,19 +61,24 @@ interface AttributeDescriptor {
     String collate();
 
     /**
-     * @return class name of the converter for this attribute
-     */
-    String converterName();
-
-    /**
      * @return optional column length for this attribute
      */
     Integer columnLength();
 
     /**
+     * @return class name of the converter for this attribute
+     */
+    String converterName();
+
+    /**
      * @return optional default value string for this attribute used during table generation.
      */
     String defaultValue();
+
+    /**
+     * @return optional column definition used during table generation
+     */
+    String definition();
 
     /**
      * @return name of the generated field for this attribute used during code generation.
@@ -197,6 +202,11 @@ interface AttributeDescriptor {
      * for associative attributes
      */
     String mappedBy();
+
+    /**
+     * @return Class name compatible with java.lang.Optional (e.g. Guava)
+     */
+    String optionalClass();
 
     /**
      * @return optional in a relational attribute the column use to order the generated query by.

@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 requery.io
+ * Copyright 2017 requery.io
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -104,24 +104,24 @@ class EntityGraph {
                 .filter(TypeKind::isPrimitive)
                 .filter(kind -> kind.toString().toLowerCase().equals(attribute.referencedType()))
                 .findFirst();
-            if (primitiveType.isPresent()) {
-                // attribute is basic foreign key and not referring to an entity
-                return Optional.empty();
-            } else {
+            if (!primitiveType.isPresent()) {
                 QualifiedName referencedType = new QualifiedName(attribute.referencedType());
                 return entityByName(referencedType);
-            }
+            } // else attribute is basic foreign key and not referring to an entity
         } else {
             TypeMirror referencedType = attribute.typeMirror();
             if (attribute.isIterable()) {
                 referencedType = collectionElementType(referencedType);
             }
             TypeElement referencedElement = (TypeElement) types.asElement(referencedType);
-            String referencedName = referencedElement.getSimpleName().toString();
-            return entities.values().stream()
-                .filter(entity -> match(entity, referencedName))
-                .findFirst();
+            if (referencedElement != null) {
+                String referencedName = referencedElement.getSimpleName().toString();
+                return entities.values().stream()
+                        .filter(entity -> match(entity, referencedName))
+                        .findFirst();
+            }
         }
+        return Optional.empty();
     }
 
     private static boolean match(EntityDescriptor entity, String referenceName) {
@@ -142,7 +142,7 @@ class EntityGraph {
         String referencedColumn = attribute.referencedColumn();
         if (Names.isEmpty(referencedColumn)) {
             // using the id
-            List<AttributeDescriptor> keys = referenced.attributes().values().stream()
+            List<AttributeDescriptor> keys = referenced.attributes().stream()
                 .filter(AttributeDescriptor::isKey).collect(Collectors.toList());
 
             if (keys.size() == 1) {
@@ -153,7 +153,7 @@ class EntityGraph {
                     .findFirst();
             }
         } else {
-            return referenced.attributes().values().stream()
+            return referenced.attributes().stream()
                 .filter(other -> other.name().equals(referencedColumn))
                 .findFirst();
         }
@@ -172,14 +172,14 @@ class EntityGraph {
                                               EntityDescriptor referenced) {
         String mappedBy = attribute.mappedBy();
         if (Names.isEmpty(mappedBy)) {
-            return referenced.attributes().values().stream()
+            return referenced.attributes().stream()
                 .filter(other -> other.cardinality() != null)
                 .filter(other -> referencingEntity(other).isPresent())
                 .filter(other -> referencingEntity(other)
                         .orElseThrow(IllegalStateException::new) == entity)
                 .collect(Collectors.toSet());
         } else {
-            return referenced.attributes().values().stream()
+            return referenced.attributes().stream()
                 .filter(other -> other.name().equals(mappedBy))
                 .collect(Collectors.toSet());
         }

@@ -16,25 +16,30 @@
 
 package io.requery.rx;
 
-import io.requery.util.function.Supplier;
+import io.requery.query.Scalar;
+import io.requery.query.ScalarDelegate;
 import rx.Single;
-import rx.SingleSubscriber;
 
-class SingleOnSubscribeFromSupplier<E> implements Single.OnSubscribe<E> {
+import javax.annotation.CheckReturnValue;
 
-    private final Supplier<E> supplier;
+/**
+ * {@link Scalar} type with RxJava conversion methods.
+ *
+ * @param <E> element type
+ */
+public class RxScalar<E> extends ScalarDelegate<E> {
 
-    SingleOnSubscribeFromSupplier(Supplier<E> supplier) {
-        this.supplier = supplier;
+    RxScalar(Scalar<E> delegate) {
+        super(delegate);
     }
 
-    @Override
-    public void call(SingleSubscriber<? super E> subscriber) {
-        try {
-            E value = supplier.get();
-            subscriber.onSuccess(value);
-        } catch (Throwable t) {
-            subscriber.onError(t);
-        }
+    /**
+     * Converts this Scalar computation to a single {@link rx.Single}.
+     *
+     * @return {@link rx.Single} for the result of this query.
+     */
+    @CheckReturnValue
+    public rx.Single<E> toSingle() {
+        return Single.fromCallable(this);
     }
 }

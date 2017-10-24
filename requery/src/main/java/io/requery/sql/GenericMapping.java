@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 requery.io
+ * Copyright 2017 requery.io
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package io.requery.sql;
 
 import io.requery.Converter;
+import io.requery.converter.CurrencyConverter;
 import io.requery.converter.EnumStringConverter;
 import io.requery.converter.LocalDateConverter;
 import io.requery.converter.LocalDateTimeConverter;
@@ -29,6 +30,7 @@ import io.requery.converter.ZonedDateTimeConverter;
 import io.requery.meta.Attribute;
 import io.requery.query.Expression;
 import io.requery.query.ExpressionType;
+import io.requery.query.function.Function;
 import io.requery.sql.type.BigIntType;
 import io.requery.sql.type.BinaryType;
 import io.requery.sql.type.BlobType;
@@ -82,6 +84,7 @@ public class GenericMapping implements Mapping {
     private final ClassMap<FieldType> fixedTypes;
     private final ClassMap<Converter<?, ?>> converters;
     private final Map<Attribute, FieldType> resolvedTypes;
+    private final ClassMap<Function.Name> functionTypes;
     private PrimitiveIntType primitiveIntType;
     private PrimitiveLongType primitiveLongType;
     private PrimitiveShortType primitiveShortType;
@@ -125,6 +128,7 @@ public class GenericMapping implements Mapping {
 
         fixedTypes = new ClassMap<>();
         fixedTypes.put(byte[].class, new BinaryType());
+        functionTypes = new ClassMap<>();
         converters = new ClassMap<>();
         resolvedTypes = new IdentityHashMap<>();
         Set<Converter> converters = new HashSet<>();
@@ -132,6 +136,7 @@ public class GenericMapping implements Mapping {
         converters.add(new UUIDConverter());
         converters.add(new URIConverter());
         converters.add(new URLConverter());
+        converters.add(new CurrencyConverter());
         if (LanguageVersion.current().atLeast(LanguageVersion.JAVA_1_8)) {
             converters.add(new LocalDateConverter());
             converters.add(new LocalTimeConverter());
@@ -146,6 +151,12 @@ public class GenericMapping implements Mapping {
                 this.converters.put(mapped, converter);
             }
         }
+    }
+
+    @Override
+    public Mapping aliasFunction(Function.Name name, Class<? extends Function> function) {
+        functionTypes.put(function, name);
+        return this;
     }
 
     @Override
@@ -230,6 +241,12 @@ public class GenericMapping implements Mapping {
     }
 
     @Override
+    public Function.Name mapFunctionName(Function<?> function) {
+        Function.Name name = functionTypes.get(function.getClass());
+        return name != null ? name : function.getFunctionName();
+    }
+
+    @Override
     public Class<?> typeOf(int sqlType) {
         for (Map.Entry<Class<?>, FieldType> entry : types.entrySet()) {
             if (entry.getValue().getSqlType() == sqlType) {
@@ -266,6 +283,12 @@ public class GenericMapping implements Mapping {
             converter = attribute.getConverter();
             type = attribute.getClassType();
             fieldType = mapAttribute(attribute);
+        } else if (expression.getExpressionType() == ExpressionType.ALIAS) {
+            @SuppressWarnings("unchecked")
+            Attribute<?, A> attribute = (Attribute) expression.getInnerExpression();
+            converter = attribute.getConverter();
+            type = attribute.getClassType();
+            fieldType = mapAttribute(attribute);
         } else {
             type = expression.getClassType();
             fieldType = getSubstitutedType(type);
@@ -275,6 +298,10 @@ public class GenericMapping implements Mapping {
             converter = converterForType(type);
         }
         Object value = fieldType.read(results, column);
+        // if the type is primitive the wasNull check isn't performed by the type, check here
+        if (isPrimitive && results.wasNull()) {
+            value = null;
+        }
         if (converter != null) {
             value = toMapped((Converter) converter, type, value);
         }

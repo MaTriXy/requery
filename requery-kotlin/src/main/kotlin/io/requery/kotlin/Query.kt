@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 requery.io
+ * Copyright 2017 requery.io
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,17 +16,17 @@
 
 package io.requery.kotlin
 
-import io.requery.Persistable
 import io.requery.query.Condition
 import io.requery.query.Expression
 import io.requery.query.Return
+import io.requery.query.Scalar
 import io.requery.util.function.Supplier
 import kotlin.reflect.KClass
 import kotlin.reflect.KProperty1
 
 operator fun <R> Return<R>.invoke() = get()
 
-interface Conditional<Q, V> {
+interface Conditional<out Q, V> {
 
     infix fun eq(value: V): Q
     infix fun ne(value: V): Q
@@ -53,12 +53,12 @@ interface Conditional<Q, V> {
 
 interface Logical<L, R> : Condition<L, R>, AndOr<Logical<*, *>>
 
-interface Aliasable<T> {
+interface Aliasable<out T> {
     infix fun `as`(alias: String): T
     val alias: String
 }
 
-interface AndOr<Q> {
+interface AndOr<out Q> {
     infix fun <V> and(condition: Condition<V, *>): Q
     infix fun <V> or(condition: Condition<V, *>): Q
 }
@@ -66,7 +66,7 @@ interface AndOr<Q> {
 interface Deletion<E> :
         From<E>, Join<E>, Where<E>, GroupBy<SetHavingOrderByLimit<E>>, OrderBy<Limit<E>>, Return<E>
 
-interface Distinct<Q> {
+interface Distinct<out Q> {
     fun distinct(): Q
 }
 
@@ -74,7 +74,7 @@ interface DistinctSelection<E> :
         From<E>, Join<E>, Where<E>, SetOperation<Selectable<E>>, GroupBy<SetHavingOrderByLimit<E>>,
         OrderBy<Limit<E>>, Return<E>
 
-interface Exists<Q> {
+interface Exists<out Q> {
     infix fun exists(query: Return<*>): Q
     infix fun notExists(query: Return<*>): Q
 }
@@ -85,7 +85,7 @@ interface From<E> : Return<E> {
     fun from(vararg queries: Supplier<*>): JoinWhereGroupByOrderBy<E>
 }
 
-interface GroupBy<Q> {
+interface GroupBy<out Q> {
     fun groupBy(vararg expressions: Expression<*>): Q
     infix fun <V> groupBy(expression: Expression<V>): Q
 }
@@ -98,6 +98,10 @@ interface HavingAndOr<E> : AndOr<HavingAndOr<E>>, OrderByLimit<E>
 
 interface Insertion<E> : Return<E> {
     fun <V> value(expression: Expression<V>, value: V): Insertion<E>
+}
+
+interface InsertInto<Q> : Return<Q> {
+    infix fun query(query: Return<*>): Return<Q>
 }
 
 interface Join<E> {
@@ -126,7 +130,7 @@ interface Offset<E> : Return<E> {
     infix fun offset(offset: Int): Return<E>
 }
 
-interface OrderBy<Q> {
+interface OrderBy<out Q> {
     infix fun <V> orderBy(expression: Expression<V>): Q
     fun orderBy(vararg expressions: Expression<*>): Q
 }
@@ -171,9 +175,9 @@ interface Update<E> :
     fun <V> set(expression: Expression<V>, value: V): Update<E>
 }
 
-inline fun <reified T : Persistable, reified E : T, V> Update<E>
-        .set(property: KProperty1<T, V>, value: V): Update<E> {
-    return set(findAttribute(property), value);
+inline fun <reified T : Any, V> Update<Scalar<Int>>
+        .set(property: KProperty1<T, V>, value: V): Update<Scalar<Int>> {
+    return set(findAttribute(property), value)
 }
 
 interface Where<E> : SetGroupByOrderByLimit<E>, Return<E> {

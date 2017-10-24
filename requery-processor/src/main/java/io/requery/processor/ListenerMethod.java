@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 requery.io
+ * Copyright 2017 requery.io
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -71,7 +71,8 @@ class ListenerMethod extends BaseProcessableElement<ExecutableElement> implement
                 Types types = processingEnvironment.getTypeUtils();
                 for (TypeMirror mirror : element.getThrownTypes()) {
                     Element exceptionElement = types.asElement(mirror);
-                    if (exceptionElement.getKind() == ElementKind.CLASS) {
+                    if (exceptionElement != null &&
+                        exceptionElement.getKind() == ElementKind.CLASS) {
                         TypeElement typeElement = (TypeElement) exceptionElement;
                         if (!Mirrors.isInstance(types, typeElement, RuntimeException.class)) {
                             validator.error("Callback method cannot throw checked exception(s)");

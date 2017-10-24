@@ -5,18 +5,18 @@ import android.support.v7.app.AppCompatActivity
 import android.view.Menu
 import android.view.MenuItem
 import android.widget.TextView
+import io.reactivex.android.schedulers.AndroidSchedulers
+import io.reactivex.schedulers.Schedulers
 import io.requery.Persistable
 import io.requery.android.example.app.model.*
-import io.requery.sql.KotlinEntityDataStore
-import rx.Observable
-import rx.android.schedulers.AndroidSchedulers
+import io.requery.reactivex.KotlinReactiveEntityStore
 
 /**
  * Simple activity allowing you to edit a Person entity using data binding.
  */
 class PersonEditActivity : AppCompatActivity() {
 
-    private lateinit var data: KotlinEntityDataStore<Persistable>
+    private lateinit var data: KotlinReactiveEntityStore<Persistable>
     private lateinit var person: Person
 
     companion object {
@@ -35,10 +35,10 @@ class PersonEditActivity : AppCompatActivity() {
             person = PersonEntity() // creating a new person
             setPerson(person)
         } else {
-            Observable.fromCallable {
-                data.findByKey(PersonEntity::class, personId)
-            } .subscribeOn(AndroidSchedulers.mainThread())
-              .subscribe { person -> setPerson(person) }
+            data.findByKey(PersonEntity::class, personId)
+                    .subscribeOn(Schedulers.single())
+                    .observeOn(AndroidSchedulers.mainThread())
+                    .subscribe { person -> setPerson(person) }
         }
     }
 
@@ -103,10 +103,9 @@ class PersonEditActivity : AppCompatActivity() {
         address.zip = getViewText(R.id.zip)
         address.state = getViewText(R.id.state)
         // save the person
-        if (person.id === 0) {
-            Observable.fromCallable { data.insert(person) }.subscribe({ finish() })
-        } else {
-            Observable.fromCallable { data.update(person) }.subscribe({ finish() })
-        }
+        val observable = if (person.id == 0) data.insert(person) else data.update(person)
+        observable.subscribeOn(Schedulers.single())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe { _ -> finish() }
     }
 }

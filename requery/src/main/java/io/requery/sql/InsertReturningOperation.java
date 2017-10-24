@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 requery.io
+ * Copyright 2017 requery.io
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +16,14 @@
 
 package io.requery.sql;
 
-import io.requery.PersistenceException;
+import io.requery.TransactionListener;
+import io.requery.meta.Type;
 import io.requery.query.Expression;
+import io.requery.query.MutableTuple;
 import io.requery.query.NamedExpression;
 import io.requery.query.Result;
-import io.requery.query.MutableTuple;
 import io.requery.query.Tuple;
+import io.requery.query.element.InsertType;
 import io.requery.query.element.QueryElement;
 import io.requery.query.element.QueryOperation;
 import io.requery.sql.gen.DefaultOutput;
@@ -30,6 +32,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.Set;
 
 /**
@@ -71,25 +74,39 @@ class InsertReturningOperation extends PreparedQueryOperation implements
         String sql = generator.toSql();
         BoundParameters parameters = generator.parameters();
         int count;
+        PreparedStatement statement = null;
+        Set<Type<?>> types = query.entityTypes();
+        TransactionListener transactionListener = new CompositeTransactionListener(
+                configuration.getTransactionListenerFactories());
         try {
             Connection connection = configuration.getConnection();
             StatementListener listener = configuration.getStatementListener();
-            PreparedStatement statement = prepare(sql, connection);
+            if (query.insertType() == InsertType.SELECT) {
+                statement = connection.prepareStatement(sql, Statement.NO_GENERATED_KEYS);
+            } else {
+                statement = prepare(sql, connection);
+            }
             mapParameters(statement, parameters);
+
             listener.beforeExecuteUpdate(statement, sql, parameters);
+            transactionListener.beforeCommit(types);
+
             count = statement.executeUpdate();
-            listener.afterExecuteUpdate(statement);
-            if (selection == null || selection.isEmpty()) {
+
+            listener.afterExecuteUpdate(statement, count);
+            transactionListener.afterCommit(types);
+
+            if (selection == null || selection.isEmpty() || query.insertType() == InsertType.SELECT) {
                 connection.close();
                 MutableTuple tuple = new MutableTuple(1);
                 tuple.set(0, NamedExpression.ofInteger("count"), count);
-                return new SingleResult<Tuple>(tuple);
+                return new CollectionResult<Tuple>(tuple);
             } else {
                 ResultSet results = statement.getGeneratedKeys();
                 return new GeneratedKeyResult(configuration, selection, connection, results, count);
             }
-        } catch (SQLException e) {
-            throw new PersistenceException(e);
+        } catch (Exception e) {
+            throw StatementExecutionException.closing(statement, e, sql);
         }
     }
 }

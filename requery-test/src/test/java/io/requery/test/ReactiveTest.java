@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 requery.io
+ * Copyright 2017 requery.io
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,18 +16,22 @@
 
 package io.requery.test;
 
+import io.reactivex.Completable;
 import io.reactivex.Observable;
 import io.reactivex.Single;
 import io.reactivex.disposables.Disposable;
+import io.reactivex.functions.Action;
 import io.reactivex.functions.Consumer;
 import io.reactivex.functions.Function;
 import io.reactivex.schedulers.Schedulers;
+import io.requery.BlockingEntityStore;
 import io.requery.Persistable;
 import io.requery.cache.EntityCacheBuilder;
 import io.requery.meta.EntityModel;
 import io.requery.query.Result;
-import io.requery.reactivex.ReactiveSupport;
 import io.requery.reactivex.ReactiveEntityStore;
+import io.requery.reactivex.ReactiveResult;
+import io.requery.reactivex.ReactiveSupport;
 import io.requery.sql.Configuration;
 import io.requery.sql.ConfigurationBuilder;
 import io.requery.sql.EntityDataStore;
@@ -38,6 +42,7 @@ import io.requery.sql.platform.HSQL;
 import io.requery.test.model.Person;
 import io.requery.test.model.Phone;
 import org.junit.After;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.reactivestreams.Subscriber;
@@ -50,8 +55,10 @@ import javax.sql.CommonDataSource;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
@@ -132,7 +139,7 @@ public class ReactiveTest extends RandomData {
         });
         Person p = data.insert(person).blockingGet();
         assertTrue(p.getId() > 0);
-        int count = data.count(Person.class).get().toSingle().toBlocking().value();
+        int count = data.count(Person.class).get().single().blockingGet();
         assertEquals(1, count);
     }
 
@@ -153,6 +160,31 @@ public class ReactiveTest extends RandomData {
             }
         }).blockingGet();
         assertTrue(person.getPhoneNumbers().toList().size() == 1);
+    }
+
+    @Test
+    public void testQueryEmpty() throws Exception {
+        final CountDownLatch latch = new CountDownLatch(1);
+        data.select(Person.class).get().observable()
+                .subscribe(new Consumer<Person>() {
+            @Override
+            public void accept(Person person) throws Exception {
+                Assert.fail();
+            }
+        }, new Consumer<Throwable>() {
+            @Override
+            public void accept(Throwable throwable) throws Exception {
+                Assert.fail();
+            }
+        }, new Action() {
+            @Override
+            public void run() throws Exception {
+                latch.countDown();
+            }
+        });
+        if (!latch.await(1, TimeUnit.SECONDS)) {
+            Assert.fail();
+        }
     }
 
     @Test
@@ -192,9 +224,9 @@ public class ReactiveTest extends RandomData {
     public void testQuerySelfObservableMap() throws Exception {
         final AtomicInteger count = new AtomicInteger();
         Disposable disposable = data.select(Person.class).limit(2).get().observableResult()
-            .flatMap(new Function<Result<Person>, Observable<Person>>() {
+            .flatMap(new Function<ReactiveResult<Person>, Observable<Person>>() {
                 @Override
-                public Observable<Person> apply(Result<Person> persons) {
+                public Observable<Person> apply(ReactiveResult<Person> persons) {
                     return persons.observable();
                 }
             }).subscribe(new Consumer<Person>() {
@@ -281,21 +313,53 @@ public class ReactiveTest extends RandomData {
                 return data.insert(phone);
             }
         }).blockingGet();
-        int count = person.getPhoneNumbers().toObservable().count().toBlocking().first();
+        int count = person.getPhoneNumbers().toList().size();
         assertEquals(1, count);
     }
 
     @Test
     public void testRunInTransaction() {
         final Person person = randomPerson();
-        data.runInTransaction(
-                data.insert(person),
-                data.update(person)).subscribe(new Consumer<Object>() {
+        data.runInTransaction(new io.requery.util.function.Function<BlockingEntityStore<Persistable>, Boolean>() {
             @Override
-            public void accept(Object o) {
-
+            public Boolean apply(BlockingEntityStore<Persistable> blocking) {
+                blocking.insert(person);
+                blocking.update(person);
+                blocking.delete(person);
+                return true;
             }
-        });
+        }).blockingGet();
+        assertEquals(0, data.count(Person.class).get().value().intValue());
+
+        final Person person2 = randomPerson();
+        data.runInTransaction(new io.requery.util.function.Function<BlockingEntityStore<Persistable>, Boolean>() {
+            @Override
+            public Boolean apply(BlockingEntityStore<Persistable> blocking) {
+                blocking.insert(person2);
+                return true;
+            }
+        }).blockingGet();
+        assertEquals(1, data.count(Person.class).get().value().intValue());
+    }
+
+    @Test
+    public void testRunInTransactionFromBlocking() {
+        final BlockingEntityStore<Persistable> blocking = data.toBlocking();
+        Completable.fromCallable(new Callable<Object>() {
+            @Override
+            public Object call() throws Exception {
+                blocking.runInTransaction(new Callable<Object>() {
+                    @Override
+                    public Object call() throws Exception {
+                        final Person person = randomPerson();
+                        blocking.insert(person);
+                        blocking.update(person);
+                        return null;
+                    }
+                });
+                return null;
+            }
+        }).subscribe();
         assertEquals(1, data.count(Person.class).get().value().intValue());
     }
 
