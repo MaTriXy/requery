@@ -1,5 +1,5 @@
 plugins {
-    id 'com.github.johnrengelman.shadow' version '1.2.3'
+    id 'com.github.johnrengelman.shadow' version '2.0.0'
 }
 apply plugin: 'java'
 apply plugin: 'idea'
@@ -11,7 +11,7 @@ targetCompatibility = 1.8
 dependencies {
     compile project(':requery')
     compile "org.eclipse.persistence:javax.persistence:$jpa_version"
-    compile 'com.squareup:javapoet:1.8.0'
+    compile 'com.squareup:javapoet:1.11.1'
 }
 
 shadowJar {

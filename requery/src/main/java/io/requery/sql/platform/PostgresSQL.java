@@ -83,7 +83,7 @@ public class PostgresSQL extends Generic {
         mapping.replaceType(Types.VARBINARY, new ByteArrayType(Types.VARBINARY));
         mapping.replaceType(Types.NVARCHAR, new VarCharType());
         mapping.replaceType(Types.BLOB, new BlobType());
-        mapping.putType(UUID.class, new UUIDType());
+        mapping.replaceType(Types.JAVA_OBJECT, new UUIDType());
     }
 
     @Override
@@ -230,7 +230,8 @@ public class PostgresSQL extends Generic {
                     @Override
                     public void append(QueryBuilder qb, Expression<?> value) {
                         qb.attribute((Attribute) value);
-                        qb.append("= EXCLUDED." + value.getName());
+                        qb.append("= EXCLUDED.");
+                        qb.attribute((Attribute) value);
                     }
                 });
         }

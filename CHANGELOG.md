@@ -1,6 +1,41 @@
 Change Log
 ==========
 
+## 1.6.1
+
+- Fix Model file generated in wrong package in certain cases
+- Fix Android SqlCipherDatabaseSource not extendable
+
+## 1.6.0
+
+- Java 9 use new @Generated annotation
+- RxJava 1.0 support removed
+- Generate error if setter present for read-only field
+- SQLServer default map dates to datetime2 instead of timestamp
+- PostgresSQL fix default UUID type mapping
+- Android support AndroidX libraries
+- Add Spring boot example
+
+## 1.5.1
+
+- Add min/max to base expression functions
+- Add factory methods for creating different numeric type Named Expressions
+- EnumConverter uses name() for string conversion instead of toString()
+
+## 1.5.0
+
+- Deprecates RxJava 1.0 support in order to bring improvements to RxJava 2.0 support in a future version
+- Default indexes now include table name in the index name
+- Support setting generated member visibility (for removing synthetic accessors)
+- Support package private code generation for reduced method count on Android
+- Fix NoSuchElementException during table generation of an entity with no keys
+- Fix Android proguard rules
+- Fix EntityDataStore synchronization that could dead lock
+- Fix inserting empty collection returning null key set
+- Fix Kotlin ClassCastException when using long/int key types in the insert returning query
+- Fix CloseableIterator accumulation when using Result functions
+- Fix Connection not closed when exception thrown from a raw query 
+
 ## 1.4.1
 
 - Support accessing the Configuration instance from EntityDataStore

@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 requery.io
+ * Copyright 2018 requery.io
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,15 +25,27 @@ public class NamedExpression<V> extends FieldExpression<V> {
         return new NamedExpression<>(name, type);
     }
 
-    public static  NamedExpression<Integer> ofInteger(String name) {
-        return new NamedExpression<>(name, Integer.class);
+    public static NamedNumericExpression<Double> ofDouble(String name) {
+        return new NamedNumericExpression<>(name, Double.class);
     }
 
-    public static  NamedExpression<String> ofString(String name) {
-        return new NamedExpression<>(name, String.class);
+    public static NamedNumericExpression<Float> ofFloat(String name) {
+        return new NamedNumericExpression<>(name, Float.class);
     }
 
-    private NamedExpression(String name, Class<V> type) {
+    public static NamedNumericExpression<Integer> ofInteger(String name) {
+        return new NamedNumericExpression<>(name, Integer.class);
+    }
+
+    public static NamedNumericExpression<Long> ofLong(String name) {
+        return new NamedNumericExpression<>(name, Long.class);
+    }
+
+    public static NamedStringExpression ofString(String name) {
+        return new NamedStringExpression("\'" + name + "\'");
+    }
+
+    protected NamedExpression(String name, Class<V> type) {
         this.name = name;
         this.type = type;
     }
@@ -52,4 +64,5 @@ public class NamedExpression<V> extends FieldExpression<V> {
     public ExpressionType getExpressionType() {
         return ExpressionType.NAME;
     }
+
 }

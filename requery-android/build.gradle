@@ -2,34 +2,31 @@ buildscript {
     repositories {
         jcenter()
         mavenCentral()
-        maven { url 'https://oss.sonatype.org/content/repositories/snapshots/' }
     }
 }
 
 apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
 apply plugin: 'maven-publish'
 
 android {
-    compileSdkVersion 25
+    compileSdkVersion 28
     buildToolsVersion "$android_buildtools_version"
 
     defaultConfig {
         minSdkVersion 14
-        targetSdkVersion 25
+        targetSdkVersion 28
         versionCode 1
         versionName "1.0"
-        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles 'proguard-rules.pro'
+        multiDexEnabled true
     }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
-    }
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_7
-        targetCompatibility JavaVersion.VERSION_1_7
     }
     lintOptions {
         abortOnError false
@@ -41,15 +38,17 @@ android {
 }
 
 dependencies {
-    compile project(':requery')
-    compile 'com.android.support:support-v4:25.3.0'
-    compile 'com.android.support:recyclerview-v7:25.3.0'
-    compile 'net.zetetic:android-database-sqlcipher:3.5.7'
-    compile 'io.requery:sqlite-android:3.20.1'
-    testCompile 'junit:junit:4.12'
-    androidTestCompile project(':requery-test')
-    androidTestCompile 'com.android.support.test:runner:0.5'
-    androidTestCompile 'com.android.support.test:rules:0.5'
+    implementation project(':requery')
+    implementation 'androidx.sqlite:sqlite:2.0.0'
+    implementation "androidx.recyclerview:recyclerview:$androidx_version"
+    implementation 'net.zetetic:android-database-sqlcipher:4.0.1'
+    implementation 'io.requery:sqlite-android:3.25.3'
+    testImplementation 'junit:junit:4.12'
+    androidTestImplementation project(':requery-test')
+    androidTestImplementation 'androidx.test:runner:1.1.0'
+    androidTestImplementation 'androidx.test:rules:1.1.0'
+    androidTestImplementation 'androidx.multidex:multidex:2.0.0'
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
 }
 
 publish.dependsOn 'assembleRelease'
@@ -96,10 +95,13 @@ task javadoc(type: Javadoc) {
     source = android.sourceSets.main.java.srcDirs
     classpath += project.files(android.getBootClasspath().join(File.pathSeparator))
     classpath += configurations.compile
-    failOnError false;
+    failOnError false
 }
 
 task javadocJar(type: Jar, dependsOn: javadoc) {
     classifier = 'javadoc'
     from javadoc.destinationDir
+}
+repositories {
+    mavenCentral()
 }

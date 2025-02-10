@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 requery.io
+ * Copyright 2018 requery.io
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,10 +40,12 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 import static io.requery.processor.EntityProcessor.GENERATE_ALWAYS;
@@ -86,15 +88,9 @@ public final class EntityProcessor extends AbstractProcessor {
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
         // types to generate in this round
         Map<TypeElement, EntityElement> entities = new HashMap<>();
-        SourceLanguage.map(processingEnv);
         Types types = processingEnv.getTypeUtils();
 
-        Set<TypeElement> annotationElements = new LinkedHashSet<>();
-        if (isEmptyKotlinAnnotationSet(annotations)) {
-            annotationElements.addAll(SourceLanguage.getAnnotations());
-        } else {
-            annotationElements.addAll(annotations);
-        }
+        Set<TypeElement> annotationElements = new LinkedHashSet<>(annotations);
 
         for (TypeElement annotation : annotationElements) {
             for (Element element : roundEnv.getElementsAnnotatedWith(annotation)) {
@@ -201,7 +197,7 @@ public final class EntityProcessor extends AbstractProcessor {
             generators.addAll( packagesMap.entrySet().stream()
                 .filter(entry -> !entry.getValue().isEmpty())
                 .filter(entry -> !generatedModelPackages.contains(entry.getKey()))
-                .map(entry -> { generatedModelPackages.add(entry.getKey()); return entry; })
+                .peek(entry -> generatedModelPackages.add(entry.getKey()))
                 .map(entry -> new ModelGenerator(processingEnv, entry.getKey(), entry.getValue()))
                 .collect(Collectors.toList()));
         }
@@ -275,7 +271,7 @@ public final class EntityProcessor extends AbstractProcessor {
     private String findModelPackageName(EntityGraph graph) {
         String packageName = "";
         Set<String> packageNames = graph.entities().stream().map(
-            entity -> entity.typeName().packageName()).collect(Collectors.toSet());
+                entity -> entity.typeName().packageName()).collect(Collectors.toCollection(TreeSet::new));
 
         if (packageNames.size() == 1) {
             // all the types are in the same package...
@@ -302,16 +298,5 @@ public final class EntityProcessor extends AbstractProcessor {
             }
         }
         return packageName;
-    }
-
-    // Kotlin 1.0.4 the set of annotation elements is empty except for '__gen.KotlinAptAnnotation'
-    private boolean isEmptyKotlinAnnotationSet(Set<? extends TypeElement> annotations) {
-        if (annotations.size() == 1) {
-            TypeElement element = annotations.iterator().next();
-            if (element.getQualifiedName().contentEquals("__gen.KotlinAptAnnotation")) {
-                return true;
-            }
-        }
-        return false;
     }
 }

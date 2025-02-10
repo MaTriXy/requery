@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 requery.io
+ * Copyright 2018 requery.io
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,17 +16,9 @@
 
 package io.requery.query;
 
-import io.requery.query.function.Avg;
 import io.requery.query.function.Function;
-import io.requery.query.function.Substr;
-import io.requery.query.function.Trim;
-import io.requery.query.function.Abs;
-import io.requery.query.function.Lower;
 import io.requery.query.function.Max;
 import io.requery.query.function.Min;
-import io.requery.query.function.Round;
-import io.requery.query.function.Sum;
-import io.requery.query.function.Upper;
 
 public interface Functional<V> {
 
@@ -34,29 +26,9 @@ public interface Functional<V> {
 
     OrderingExpression<V> desc();
 
-    Abs<V> abs();
-
     Max<V> max();
 
     Min<V> min();
-
-    Avg<V> avg();
-
-    Sum<V> sum();
-
-    Round<V> round();
-
-    Round<V> round(int decimals);
-
-    Trim<V> trim(String chars);
-
-    Trim<V> trim();
-
-    Substr<V> substr(int offset, int length);
-
-    Upper<V> upper();
-
-    Lower<V> lower();
 
     Function<V> function(String name);
 }

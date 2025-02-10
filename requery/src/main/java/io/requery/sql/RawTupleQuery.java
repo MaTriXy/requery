@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 requery.io
+ * Copyright 2018 requery.io
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 
 package io.requery.sql;
 
-import io.requery.PersistenceException;
 import io.requery.query.BaseResult;
 import io.requery.query.Expression;
 import io.requery.query.NamedExpression;
@@ -130,7 +129,7 @@ class RawTupleQuery extends PreparedQueryOperation implements Supplier<Result<Tu
         }
 
         @Override
-        public CloseableIterator<Tuple> iterator(int skip, int take) {
+        public CloseableIterator<Tuple> createIterator(int skip, int take) {
             try {
                 // execute the query
                 StatementListener listener = configuration.getStatementListener();
@@ -152,13 +151,29 @@ class RawTupleQuery extends PreparedQueryOperation implements Supplier<Result<Tu
                         if (sqlType == Types.NUMERIC) {
                             sqlType = Types.INTEGER;
                         }
-                        Class type = mapping.typeOf(sqlType);
-                        expressions[i] = NamedExpression.of(name, type);
+                        Set<Class<?>> types = mapping.typesOf(sqlType);
+                        expressions[i] = NamedExpression.of(name, types.iterator().next());
                     }
                 }
                 return iterator;
             } catch (SQLException e) {
-                throw new PersistenceException(e);
+                throw StatementExecutionException.closing(statement, e, sql);
+            }
+        }
+
+        @Override
+        public void close() {
+            try {
+                if (statement != null) {
+                    Connection connection = statement.getConnection();
+                    if (connection != null) {
+                        connection.close();
+                    }
+                }
+            } catch (SQLException e) {
+                e.printStackTrace();
+            } finally {
+                super.close();
             }
         }
     }
